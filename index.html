@@ -383,7 +383,7 @@
             document.getElementById('user-balance-display').classList.toggle('hidden', !isUserMode);
         }
 
-        /**
+         /**
          * Builds the bottom navigation bar based on the mode.
          */
         function setupBottomNav() {
@@ -392,4 +392,430 @@
 
             if (isUserMode) {
                 const userNavItems = [
-       
+                    { id: 'user-home-page', icon: '🏠', label: 'Home' },
+                    { id: 'tasks-page', icon: '✅', label: 'Tasks' },
+                    { id: 'withdraw-page', icon: '🏦', label: 'Withdraw' },
+                    { id: 'profile-page', icon: '👤', label: 'Profile' }
+                ];
+
+                userNavItems.forEach(item => {
+                    const btn = document.createElement('button');
+                    btn.className = 'flex flex-col items-center justify-center p-2 text-xs h-full transition-all duration-200';
+                    btn.setAttribute('onclick', `MapsTo('${item.id}')`);
+                    btn.innerHTML = `<span>${item.icon}</span> ${item.label}`;
+                    nav.appendChild(btn);
+                });
+                navigateTo('user-home-page'); // Default page
+            } else if (isAdminMode) {
+                const adminNavItems = [
+                    { id: 'admin-dashboard-page', icon: '👑', label: 'Dashboard' },
+                    { id: 'admin-task-management-page', icon: '📝', label: 'Tasks' },
+                    { id: 'admin-withdrawal-management-page', icon: '💸', label: 'Withdrawals' },
+                    { id: 'admin-tools-page', icon: '⚙️', label: 'Settings' }
+                ];
+
+                adminNavItems.forEach(item => {
+                    const btn = document.createElement('button');
+                    btn.className = 'flex flex-col items-center justify-center p-2 text-xs h-full transition-all duration-200';
+                    btn.setAttribute('onclick', `MapsTo('${item.id}')`);
+                    btn.innerHTML = `<span>${item.icon}</span> ${item.label}`;
+                    nav.appendChild(btn);
+                });
+                navigateTo('admin-dashboard-page'); // Default page
+            } else {
+                // If no valid mode, show an error
+                document.getElementById('app-title').innerText = 'Error';
+                document.getElementById('app-content').innerHTML = '<p class="text-center text-red-500 mt-12">Invalid URL parameter. Use `?user=true` or `?admin=true`.</p>';
+                nav.classList.add('hidden');
+            }
+        }
+
+        // === 3. FIREBASE USER & REAL-TIME LOGIC ===
+
+        /**
+         * Initializes user session and real-time listeners.
+         */
+        async function initializeApp() {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+
+            if (isUserMode) {
+                await setupUserSession();
+                setupUserListeners();
+                fetchAndDisplayUserReferralHistory();
+            } else if (isAdminMode) {
+                setupAdminListeners();
+            }
+
+            setupBottomNav();
+        }
+
+        /**
+         * Sets up the user's document in Firestore (if it doesn't exist)
+         * and processes any referral.
+         */
+        async function setupUserSession() {
+            const userId = telegramUser.id.toString();
+            const userRef = db.collection('users').doc(userId);
+            const userDoc = await userRef.get();
+
+            if (!userDoc.exists) {
+                // Check for referral in URL
+                const referrerId = urlParams.get('ref');
+                const initialData = {
+                    id: userId,
+                    username: telegramUser.username || '',
+                    firstName: telegramUser.first_name || 'User',
+                    balance: 0,
+                    totalEarn: 0,
+                    totalWithdrawal: 0,
+                    adsWatched: 0,
+                    tasksDone: 0,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    referrerId: referrerId || null
+                };
+                await userRef.set(initialData);
+
+                // Handle referral reward
+                if (referrerId && referrerId !== userId) {
+                    const referrerRef = db.collection('users').doc(referrerId);
+                    const referrerDoc = await referrerRef.get();
+
+                    if (referrerDoc.exists) {
+                        // Give reward to the new user
+                        await userRef.update({
+                            balance: REFERRAL_REWARD,
+                            totalEarn: REFERRAL_REWARD
+                        });
+                        showPopup("Welcome Bonus!", `You earned ${REFERRAL_REWARD} Coins for joining!`);
+
+                        // Give reward to the referrer and log the referral
+                        await referrerRef.update({
+                            balance: firebase.firestore.FieldValue.increment(REFERRAL_REWARD),
+                            totalEarn: firebase.firestore.FieldValue.increment(REFERRAL_REWARD),
+                        });
+                        await db.collection('referrals').add({
+                            referrerId: referrerId,
+                            referredId: userId,
+                            referredUsername: telegramUser.username || 'New User',
+                            reward: REFERRAL_REWARD,
+                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        showPopup("Referral Reward!", `Your referrer (${referrerDoc.data().username || referrerDoc.data().firstName}) has been rewarded!`);
+                    }
+                }
+            }
+
+            // Set up referral link for the profile page
+            const referralLink = `${window.location.origin}${window.location.pathname}?user=true&ref=${userId}`;
+            document.getElementById('referral-link').value = referralLink;
+        }
+
+        /**
+         * Sets up all real-time Firestore listeners for the User Panel.
+         */
+        function setupUserListeners() {
+            const userId = telegramUser.id.toString();
+
+            // 1. User Data Listener (Dashboard & Profile)
+            db.collection('users').doc(userId).onSnapshot(doc => {
+                if (doc.exists) {
+                    currentUser = doc.data();
+                    updateUserDashboard(currentUser);
+                    updateUserProfile(currentUser);
+                    fetchAndDisplayUserWithdrawalHistory(userId); // Re-fetch on data change
+                }
+            });
+
+            // 2. Tasks Listener (Tasks Page)
+            db.collection('tasks').onSnapshot(snapshot => {
+                renderUserTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            });
+
+            // 3. Withdrawal History is fetched inside the user data listener to ensure up-to-date balance.
+        }
+
+        /**
+         * Sets up all real-time Firestore listeners for the Admin Panel.
+         */
+        function setupAdminListeners() {
+            // 1. Dashboard Metrics
+            db.collection('users').onSnapshot(usersSnapshot => {
+                let totalUsers = usersSnapshot.size;
+                let totalAdsWatched = 0;
+                let totalWithdrawals = 0;
+
+                usersSnapshot.forEach(doc => {
+                    const userData = doc.data();
+                    totalAdsWatched += userData.adsWatched || 0;
+                    totalWithdrawals += userData.totalWithdrawal || 0; // Assuming totalWithdrawal tracks the cumulative amount
+                });
+
+                document.getElementById('total-users-admin').innerText = totalUsers.toLocaleString();
+                document.getElementById('total-ads-admin').innerText = totalAdsWatched.toLocaleString();
+                document.getElementById('total-withdrawals-admin').innerText = totalWithdrawals.toLocaleString();
+            });
+
+            db.collection('tasks').onSnapshot(tasksSnapshot => {
+                document.getElementById('total-tasks-admin').innerText = tasksSnapshot.size.toLocaleString();
+                renderAdminTasks(tasksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            });
+
+            // 2. Withdrawal Requests Listener
+            db.collection('withdrawals').where('status', '==', 'Pending').onSnapshot(snapshot => {
+                renderAdminWithdrawalRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            });
+        }
+
+        // === 4. USER PANEL FUNCTIONS ===
+
+        /**
+         * Updates all dashboard cards and the top bar balance.
+         * @param {object} user - The current user data object.
+         */
+        function updateUserDashboard(user) {
+            document.getElementById('user-balance').innerText = user.balance.toLocaleString();
+            document.getElementById('total-earn').innerText = user.totalEarn.toLocaleString();
+            document.getElementById('total-withdrawal').innerText = user.totalWithdrawal.toLocaleString();
+            document.getElementById('ads-watched').innerText = user.adsWatched.toLocaleString();
+            document.getElementById('total-tasks-done').innerText = user.tasksDone.toLocaleString();
+        }
+
+        /**
+         * Updates the profile page details.
+         * @param {object} user - The current user data object.
+         */
+        function updateUserProfile(user) {
+            const details = document.getElementById('profile-details');
+            details.innerHTML = `
+                <p><strong>Username:</strong> @${user.username || 'N/A'}</p>
+                <p><strong>Name:</strong> ${user.firstName}</p>
+                <p><strong>User ID:</strong> <code>${user.id}</code></p>
+                <p><strong>Total Earn:</strong> <span class="text-green-400 font-bold">${user.totalEarn.toLocaleString()} 💰</span></p>
+                <p><strong>Total Withdraw:</strong> <span class="text-red-400 font-bold">${user.totalWithdrawal.toLocaleString()} 🏦</span></p>
+            `;
+        }
+
+        /**
+         * Starts the 'Watch Ad' sequence.
+         */
+        async function startAdSequence() {
+            const WATCH_REWARD = 10;
+            const btn = document.getElementById('watch-ad-btn');
+
+            // 1. Disable button and simulate ad play/load (Monotag Placeholder)
+            btn.disabled = true;
+            btn.innerHTML = '🔄 Loading Ad... (Wait 5s)';
+            window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
+
+            await new Promise(resolve => setTimeout(resolve, 5000)); // Simulate ad loading time
+
+            // 2. Reward the user
+            const userId = telegramUser.id.toString();
+            const userRef = db.collection('users').doc(userId);
+
+            try {
+                await db.runTransaction(async (transaction) => {
+                    const userDoc = await transaction.get(userRef);
+                    if (!userDoc.exists) throw "User does not exist!";
+                    const user = userDoc.data();
+
+                    transaction.update(userRef, {
+                        balance: user.balance + WATCH_REWARD,
+                        totalEarn: user.totalEarn + WATCH_REWARD,
+                        adsWatched: user.adsWatched + 1
+                    });
+                });
+
+                showPopup("Success!", `You earned ${WATCH_REWARD} Coins! Your new balance is ${currentUser.balance + WATCH_REWARD} 💰`);
+            } catch (e) {
+                console.error("Ad reward transaction failed: ", e);
+                showPopup("Error", "Could not process reward. Please try again.");
+            } finally {
+                // 3. Re-enable button
+                btn.disabled = false;
+                btn.innerHTML = '▶️ Watch Ad Now';
+            }
+        }
+
+        /**
+         * Renders the list of available tasks for the user.
+         * @param {Array<object>} tasks - Array of task objects from Firestore.
+         */
+        function renderUserTasks(tasks) {
+            const list = document.getElementById('tasks-list');
+            list.innerHTML = '';
+
+            if (tasks.length === 0) {
+                document.getElementById('no-tasks-msg').classList.remove('hidden');
+                return;
+            }
+            document.getElementById('no-tasks-msg').classList.add('hidden');
+
+            tasks.forEach(task => {
+                const taskCard = document.createElement('div');
+                taskCard.className = 'glass-card flex justify-between items-center transition-transform hover:scale-[1.01]';
+                taskCard.innerHTML = `
+                    <div>
+                        <h4 class="text-lg font-bold">${task.title}</h4>
+                        <p class="text-sm text-gray-400 mb-2">${task.description}</p>
+                        <p class="text-yellow-400 font-semibold">Reward: ${task.reward.toLocaleString()} 💰</p>
+                    </div>
+                    <button id="task-btn-${task.id}" onclick="startTaskTimer('${task.id}', '${task.link}')" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition-all duration-200">
+                        Visit
+                    </button>
+                `;
+                list.appendChild(taskCard);
+            });
+        }
+
+        /**
+         * Starts the 10-second timer/animation for a task.
+         * @param {string} taskId - The ID of the task.
+         * @param {string} link - The external link to visit.
+         */
+        async function startTaskTimer(taskId, link) {
+            const btn = document.getElementById(`task-btn-${taskId}`);
+            const originalText = btn.innerText;
+            const timerDuration = 10; // 10 seconds
+
+            // 1. Open the external link
+            window.open(link, '_blank');
+
+            // 2. Start Timer/Loading
+            btn.disabled = true;
+            for (let i = timerDuration; i > 0; i--) {
+                btn.innerHTML = `⏳ ${i}s Left`;
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+
+            // 3. Change to Claim Reward
+            btn.innerHTML = '🎉 Claim Reward';
+            btn.onclick = () => claimTaskReward(taskId);
+            btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            btn.classList.add('bg-green-600', 'hover:bg-green-700');
+            btn.disabled = false;
+
+            window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+            showPopup("Claim Ready!", "The 10-second timer is up. Click 'Claim Reward' to get your coins!");
+        }
+
+        /**
+         * Finalizes the task and adds the reward to the user's balance.
+         * @param {string} taskId - The ID of the task to claim.
+         */
+        async function claimTaskReward(taskId) {
+            const userId = telegramUser.id.toString();
+            const taskRef = db.collection('tasks').doc(taskId);
+            const userRef = db.collection('users').doc(userId);
+            const btn = document.getElementById(`task-btn-${taskId}`);
+
+            try {
+                // Fetch the task data to get the reward amount
+                const taskDoc = await taskRef.get();
+                if (!taskDoc.exists) {
+                    showPopup("Error", "Task not found!");
+                    return;
+                }
+                const reward = taskDoc.data().reward;
+                const taskTitle = taskDoc.data().title;
+
+                btn.disabled = true;
+                btn.innerHTML = '...Claiming...';
+
+                // Transaction to ensure atomicity
+                await db.runTransaction(async (transaction) => {
+                    const userDoc = await transaction.get(userRef);
+                    if (!userDoc.exists) throw "User does not exist!";
+                    const user = userDoc.data();
+
+                    // Update user balance and stats
+                    transaction.update(userRef, {
+                        balance: user.balance + reward,
+                        totalEarn: user.totalEarn + reward,
+                        tasksDone: user.tasksDone + 1
+                    });
+
+                    // Store reward history for the user
+                    await db.collection('rewards_history').add({
+                        userId: userId,
+                        taskId: taskId,
+                        taskTitle: taskTitle,
+                        reward: reward,
+                        type: 'Task',
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                });
+
+                showPopup("Reward Claimed!", `You successfully claimed **${reward} Coins** for: **${taskTitle}**!`);
+                // Disable button permanently after claim (user cannot do the same task twice in this simple model)
+                btn.innerHTML = '✅ Done!';
+                btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                btn.classList.add('bg-gray-500');
+                btn.onclick = null;
+
+            } catch (e) {
+                console.error("Task claim transaction failed: ", e);
+                showPopup("Error", "Could not claim reward. Please check if you already completed this task or try again.");
+                // Reset button on failure
+                btn.disabled = false;
+                btn.innerHTML = 'Visit';
+                btn.onclick = () => startTaskTimer(taskId, taskDoc.data().link);
+                btn.classList.remove('bg-green-600', 'hover:bg-green-700', 'bg-gray-500');
+                btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            }
+        }
+
+        /**
+         * Submits a withdrawal request to Firebase.
+         */
+        async function requestWithdrawal() {
+            const amountInput = document.getElementById('withdraw-amount');
+            const upiIdInput = document.getElementById('upi-id');
+            const amount = parseInt(amountInput.value);
+            const upiId = upiIdInput.value.trim();
+            const btn = document.getElementById('request-withdraw-btn');
+
+            if (!amount || amount < 100) {
+                showPopup("Error", "Please enter a valid amount (Min 100 coins).");
+                return;
+            }
+            if (!upiId) {
+                showPopup("Error", "Please enter your UPI ID.");
+                return;
+            }
+            if (amount > currentUser.balance) {
+                showPopup("Error", `Insufficient balance. You have ${currentUser.balance} coins.`);
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '...Requesting...';
+
+            try {
+                // Transaction to deduct balance and record withdrawal
+                await db.runTransaction(async (transaction) => {
+                    const userRef = db.collection('users').doc(telegramUser.id.toString());
+                    const userDoc = await transaction.get(userRef);
+                    const user = userDoc.data();
+
+                    if (user.balance < amount) {
+                        throw new Error("Balance check failed during transaction.");
+                    }
+
+                    // 1. Deduct balance immediately
+                    transaction.update(userRef, {
+                        balance: user.balance - amount
+                    });
+
+                    // 2. Add withdrawal request
+                    await db.collection('withdrawals').add({
+                        userId: telegramUser.id.toString(),
+                        username: telegramUser.username || 'N/A',
+                        firstName: telegramUser.first_name || 'User',
+                        amount: amount,
+                        upiId: upiId,
+                        status: 'Pending', // Pending | Accepted | Rejected
+                        requestedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                });
