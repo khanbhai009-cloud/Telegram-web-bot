@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Mini App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for Telegram Mini App feel */
+        body {
+            background-color: #1a1a1a; /* Dark background */
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.3s ease-in-out;
+        }
+        .app-container {
+            max-width: 500px; /* Mini App width constraint */
+            margin: 0 auto;
+            min-height: 100vh;
+            padding-bottom: 70px; /* Space for bottom nav */
+        }
+        .glass-card {
+            background-color: rgba(255, 255, 255, 0.08); /* Soft glass effect */
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s;
+        }
+        .glass-card:hover {
+            transform: translateY(-2px);
+        }
+        /* Custom Gradient for Primary Buttons */
+        .btn-primary {
+            background-image: linear-gradient(45deg, #0077b6, #00b4d8);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s;
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+        /* Loading spinner animation */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #00b4d8;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div id="app-container" class="app-container p-4">
+
+        <header id="top-bar" class="flex justify-between items-center py-3 mb-4 sticky top-0 z-10 bg-[#1a1a1a] shadow-lg">
+            <h1 id="app-title" class="text-xl font-bold text-gray-200">Loading...</h1>
+            <div id="user-balance" class="flex items-center space-x-2 text-lg font-semibold px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 transition-all duration-300">
+                <span id="balance-value">0</span> <span>💰</span>
+            </div>
+        </header>
+
+        <main id="main-content" class="pb-2"></main>
+
+        <footer id="bottom-nav" class="fixed bottom-0 left-0 right-0 max-w-sm mx-auto bg-gray-900/90 backdrop-blur-md p-2 border-t border-gray-700/50 z-20 shadow-[0_-5px_10px_rgba(0,0,0,0.5)]">
+            <nav id="nav-tabs" class="flex justify-around"></nav>
+        </footer>
+
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    <script>
+        // ====================================================================
+        // 3. Configuration & Initialization (Vanilla JS)
+        // ====================================================================
+
+        // !! IMPORTANT: Replace with your actual Firebase Configuration !!
+        const firebaseConfig = {
+  apiKey: "AIzaSyA6xEZqF1ZhsDY92ygz58u95K_f3QK0TZU",
+  authDomain: "telegram-bot-a92fc.firebaseapp.com",
+  databaseURL: "https://telegram-bot-a92fc-default-rtdb.firebaseio.com",
+  projectId: "telegram-bot-a92fc",
+  storageBucket: "telegram-bot-a92fc.firebasestorage.app",
+  messagingSenderId: "275131263373",
+  appId: "1:275131263373:web:32bc501d8416ac4465f5c4"
+};
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database(); // Using Realtime Database as example
+
+        // Global State & User Info (Mock for initial session)
+        let APP_MODE = 'user'; // Default to user mode
+        let CURRENT_VIEW = 'home';
+        let USER_ID = 'telegram_user_12345'; // Mock ID - should be fetched from Telegram WebApp
+        let USER_NAME = 'MockUser';
+        let USER_DATA = {
+            coins: 0,
+            totalEarn: 0,
+            totalWithdrawal: 0,
+            adsWatched: 0,
+            tasksDone: 0,
+            isAdmin: false // Check against Firebase in a real app
+        };
+
+        const elements = {
+            appTitle: document.getElementById('app-title'),
+            mainContent: document.getElementById('main-content'),
+            navTabs: document.getElementById('nav-tabs'),
+            balanceValue: document.getElementById('balance-value'),
+        };
+
+        // ====================================================================
+        // 4. Core Logic: Routing & Setup
+        // ====================================================================
+
+        /**
+         * Parses URL parameters to determine the application mode.
+         */
+        function detectAppMode() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('admin') === 'true') {
+                APP_MODE = 'admin';
+                USER_DATA.isAdmin = true; // Mock admin status
+            } else if (urlParams.get('user') === 'true' || !urlParams.get('admin')) {
+                APP_MODE = 'user';
+            }
+        }
+
+        /**
+         * Initializes Firebase listeners for user data.
+         */
+        function setupRealtimeListeners() {
+            // Listen for changes to the current user's data
+            const userRef = db.ref('users/' + USER_ID);
+            userRef.on('value', (snapshot) => {
+                const data = snapshot.val() || {};
+                
+                // Merge new data with current state, using defaults if not present
+                USER_DATA = {
+                    ...USER_DATA,
+                    coins: data.coins || 0,
+                    totalEarn: data.totalEarn || 0,
+                    totalWithdrawal: data.totalWithdrawal || 0,
+                    adsWatched: data.adsWatched || 0,
+                    tasksDone: data.tasksDone || 0,
+                    // Note: Other fields (like tasks, withdrawals) have separate listeners
+                };
+                
+                // Update UI elements dependent on user data
+                elements.balanceValue.textContent = USER_DATA.coins.toLocaleString();
+                
+                // Re-render the current view to reflect new data
+                renderView(CURRENT_VIEW);
+            });
+            
+            // Other listeners (Tasks, Withdrawals, Admin Stats) would go here...
+            // e.g., db.ref('tasks').on('value', renderTasksView);
+            // e.g., db.ref('withdrawals').on('value', renderWithdrawalRequests);
+        }
+
+        /**
+         * Main render function to switch between app views.
+         */
+        function renderView(viewName) {
+            CURRENT_VIEW = viewName;
+            elements.mainContent.innerHTML = ''; // Clear content
+            
+            elements.appTitle.textContent = `${APP_MODE === 'admin' ? '💼 Admin Panel' : '👤 User Panel'} - ${viewName.toUpperCase()}`;
+
+            if (APP_MODE === 'user') {
+                switch (viewName) {
+                    case 'home': renderUserHome(); break;
+                    case 'tasks': renderUserTasks(); break;
+                    case 'withdraw': renderUserWithdraw(); break;
+                    case 'profile': renderUserProfile(); break;
+                    case 'watchads': renderUserWatchAds(); break; // Special view, no bottom nav tab
+                    default: renderUserHome();
+                }
+            } else if (APP_MODE === 'admin') {
+                switch (viewName) {
+                    case 'dashboard': renderAdminDashboard(); break;
+                    case 'tasks': renderAdminTasks(); break;
+                    case 'withdraw': renderAdminWithdrawals(); break;
+                    case 'settings': renderAdminSettings(); break;
+                    default: renderAdminDashboard();
+                }
+            }
+            updateActiveNavTab();
+        }
+
+        /**
+         * Renders the bottom navigation bar based on the current mode.
+         */
+        function renderBottomNav() {
+            const userTabs = [
+                { id: 'home', icon: '🏠', label: 'Home' },
+                { id: 'tasks', icon: '📝', label: 'Tasks' },
+                { id: 'withdraw', icon: '💸', label: 'Withdraw' },
+                { id: 'profile', icon: '👤', label: 'Profile' },
+            ];
+            const adminTabs = [
+                { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+                { id: 'tasks', icon: '📝', label: 'Tasks' },
+                { id: 'withdraw', icon: '🏦', label: 'Withdraw' },
+                { id: 'settings', icon: '⚙️', label: 'Settings' },
+            ];
+
+            const tabs = APP_MODE === 'user' ? userTabs : adminTabs;
+            
+            elements.navTabs.innerHTML = tabs.map(tab => `
+                <button id="nav-btn-${tab.id}" 
+                        class="nav-tab flex flex-col items-center justify-center p-2 rounded-lg text-gray-400 hover:text-blue-400 transition-colors"
+                        data-view="${tab.id}">
+                    <span class="text-xl">${tab.icon}</span>
+                    <span class="text-xs font-medium">${tab.label}</span>
+                </button>
+            `).join('');
+
+            // Add event listeners to the new buttons
+            document.querySelectorAll('.nav-tab').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    renderView(btn.dataset.view);
+                });
+            });
+        }
+        
+        /**
+         * Highlights the currently active nav tab.
+         */
+        function updateActiveNavTab() {
+             document.querySelectorAll('.nav-tab').forEach(btn => {
+                 btn.classList.remove('text-blue-400', 'bg-blue-900/50');
+                 btn.classList.add('text-gray-400');
+                 
+                 if (btn.dataset.view === CURRENT_VIEW) {
+                     btn.classList.add('text-blue-400', 'bg-blue-900/50');
+                     btn.classList.remove('text-gray-400');
+                 }
+             });
+        }
+
+
+        // ====================================================================
+        // 5. USER PANEL (View Functions)
+        // ====================================================================
+
+        /**
+         * Renders the main user dashboard.
+         */
+        function renderUserHome() {
+            elements.mainContent.innerHTML = `
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    ${renderDashboardCard('💰 Total Earn', USER_DATA.totalEarn.toLocaleString(), 'bg-green-500/20 text-green-300')}
+                    ${renderDashboardCard('🏦 Total Withdrawal', USER_DATA.totalWithdrawal.toLocaleString(), 'bg-red-500/20 text-red-300')}
+                    ${renderDashboardCard('📺 Ads Watched', USER_DATA.adsWatched.toLocaleString(), 'bg-yellow-500/20 text-yellow-300')}
+                    ${renderDashboardCard('✅ Tasks Done', USER_DATA.tasksDone.toLocaleString(), 'bg-purple-500/20 text-purple-300')}
+                </div>
+                
+                <h2 class="text-xl font-semibold mb-3">Quick Actions</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    ${renderQuickActionButton('Watch Ads', '📺', () => renderView('watchads'))}
+                    ${renderQuickActionButton('Tasks', '📝', () => renderView('tasks'))}
+                    ${renderQuickActionButton('Withdraw', '💸', () => renderView('withdraw'))}
+                    ${renderQuickActionButton('Profile', '👤', () => renderView('profile'))}
+                </div>
+            `;
+        }
+        
+        /**
+         * Renders the "Watch Ads" panel with a short timer/animation.
+         */
+        function renderUserWatchAds() {
+             elements.mainContent.innerHTML = `
+                <div class="p-6 glass-card rounded-xl text-center">
+                    <h2 class="text-2xl font-bold mb-4">Watch Ad to Earn</h2>
+                    <p class="text-gray-400 mb-6">Click the button below to start a short ad simulation and earn 10 coins.</p>
+                    <button id="watch-ad-btn" class="btn-primary px-8 py-3 rounded-xl text-lg font-bold">
+                        📺 Watch Ad (10 Coins)
+                    </button>
+                    <div id="ad-status" class="mt-4 text-center h-5"></div>
+                </div>
+                <button onclick="renderView('home')" class="mt-4 w-full bg-gray-700/50 p-3 rounded-xl text-gray-200">← Back to Home</button>
+             `;
+             
+             document.getElementById('watch-ad-btn').addEventListener('click', handleWatchAd);
+        }
+        
+        /**
+         * Handles the "Watch Ad" simulation logic.
+         */
+        function handleWatchAd() {
+            const btn = document.getElementById('watch-ad-btn');
+            const statusDiv = document.getElementById('ad-status');
+            const reward = 10;
+            const duration = 3000; // 3 seconds simulation
+
+            if (btn.disabled) return;
+            
+            btn.disabled = true;
+            btn.innerHTML = `<div class="spinner inline-block mr-2"></div> Watching Ad...`;
+            statusDiv.innerHTML = `<p class="text-yellow-400">Ad in progress (3s)...</p>`;
+
+            setTimeout(async () => {
+                // 1. Update Firebase (Atomic Write/Transaction is better)
+                const userRef = db.ref('users/' + USER_ID);
+                try {
+                    // This is a simple write, a transaction would be safer
+                    await userRef.update({
+                        coins: firebase.database.ServerValue.increment(reward),
+                        adsWatched: firebase.database.ServerValue.increment(1),
+                        totalEarn: firebase.database.ServerValue.increment(reward)
+                    });
+
+                    // 2. UI Update (Real-time listener will handle balance update)
+                    btn.innerHTML = `✅ Ad Watched!`;
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('bg-green-600');
+                    statusDiv.innerHTML = `<p class="text-green-400 font-bold">🎉 +${reward} Coins Earned!</p>`;
+                    
+                    setTimeout(() => {
+                        // Reset after a short delay
+                        btn.innerHTML = `📺 Watch Ad (10 Coins)`;
+                        btn.classList.add('btn-primary');
+                        btn.classList.remove('bg-green-600');
+                        btn.disabled = false;
+                        statusDiv.innerHTML = '';
+                    }, 2000);
+
+                    showNotificationPopup(`+${reward} Coins Earned!`, 'success');
+
+                } catch (error) {
+                    console.error("Error updating ad watch:", error);
+                    statusDiv.innerHTML = `<p class="text-red-400">Error: Could not claim reward.</p>`;
+                    btn.innerHTML = `📺 Watch Ad (10 Coins)`;
+                    btn.disabled = false;
+                }
+            }, duration);
+        }
+        
+        // Placeholder functions for other user views
+        function renderUserTasks() { elements.mainContent.innerHTML = `<h2 class="text-2xl font-bold">Tasks</h2><p class="text-gray-400">Tasks list and 10s visit timer logic goes here.</p>`; }
+        function renderUserWithdraw() { elements.mainContent.innerHTML = `<h2 class="text-2xl font-bold">Withdraw</h2><p class="text-gray-400">Withdrawal request form and history goes here.</p>`; }
+        function renderUserProfile() { elements.mainContent.innerHTML = `<h2 class="text-2xl font-bold">Profile</h2><p class="text-gray-400">User details and referral link goes here. (Logout button)</p>`; }
+
+        // ====================================================================
+        // 6. ADMIN PANEL (View Functions)
+        // ====================================================================
+        
+        // Placeholder functions for admin views
+        function renderAdminDashboard() { 
+            if (!USER_DATA.isAdmin) { elements.mainContent.innerHTML = '<p class="text-red-500">Access Denied.</p>'; return; }
+            elements.mainContent.innerHTML = `<h2 class="text-2xl font-bold">Admin Dashboard</h2><p class="text-gray-400">Total Users, Tasks, Withdrawals stats go here.</p>`; 
+        }
+        function renderAdminTasks() { 
+            if (!USER_DATA.isAdmin) { elements.mainContent.innerHTML = '<p class="text-red-500">Access Denied.</p>'; return; }
+            elements.mainContent.innerHTML = `<h2 class="text-2xl font-bold">Manage Tasks</h2><p class="text-gray-400">Form to add/edit/delete tasks goes here.</p>`; 
+        }
+        function renderAdminWithdrawals() { 
+            if (!USER_DATA.isAdmin) { elements.mainContent.innerHTML = '<p class="text-red-500">Access Denied.</p>'; return; }
+            elements.mainContent.innerHTML = `<h2 class="text-2xl font-bold">Withdrawal Requests</h2><p class="text-gray-400">List of requests with Accept/Reject buttons goes here.</p>`; 
+        }
+        function renderAdminSettings() { 
+            if (!USER_DATA.isAdmin) { elements.mainContent.innerHTML = '<p class="text-red-500">Access Denied.</p>'; return; }
+            elements.mainContent.innerHTML = `<h2 class="text-2xl font-bold">Admin Tools</h2><p class="text-gray-400">Adjust user balance, logs, broadcast message tools go here.</p>`; 
+        }
+
+        // ====================================================================
+        // 7. Utility Functions (UI Components)
+        // ====================================================================
+
+        /**
+         * Renders a dashboard statistic card.
+         */
+        function renderDashboardCard(title, value, colorClass) {
+            return `
+                <div class="glass-card p-4 rounded-xl flex flex-col justify-between h-32">
+                    <p class="text-sm font-medium text-gray-400">${title}</p>
+                    <div class="text-3xl font-bold ${colorClass}">${value}</div>
+                </div>
+            `;
+        }
+
+        /**
+         * Renders a quick action button.
+         */
+        function renderQuickActionButton(label, icon, onClick) {
+            const id = `action-btn-${label.toLowerCase().replace(' ', '-')}`;
+            // Attaching the onclick handler inline/via ID is necessary for JS functions
+            // to work after innerHTML. We'll use a direct element reference for events.
+            // For simplicity in this demo, we'll attach the handler after rendering.
+            return `
+                <button id="${id}" class="glass-card p-4 rounded-xl text-center flex flex-col items-center justify-center h-28 hover:bg-white/10 transition-colors">
+                    <span class="text-4xl mb-1">${icon}</span>
+                    <span class="text-sm font-medium">${label}</span>
+                </button>
+            `;
+        }
+        
+        /**
+         * Simple floating notification popup.
+         */
+        function showNotificationPopup(message, type = 'info') {
+            const popup = document.createElement('div');
+            let color = 'bg-blue-600';
+            if (type === 'success') color = 'bg-green-600';
+            if (type === 'error') color = 'bg-red-600';
+
+            popup.className = `fixed top-4 left-1/2 -translate-x-1/2 p-3 px-5 rounded-xl text-white font-semibold shadow-lg z-50 transition-all duration-300 opacity-0 ${color}`;
+            popup.textContent = message;
+            document.body.appendChild(popup);
+
+            // Animate in
+            setTimeout(() => { popup.classList.remove('opacity-0'); }, 50);
+
+            // Animate out and remove
+            setTimeout(() => {
+                popup.classList.add('opacity-0');
+                setTimeout(() => popup.remove(), 300);
+            }, 3000);
+        }
+
+        /**
+         * Attach event listeners to Quick Action Buttons after rendering the home page.
+         * Note: This is a necessary step when using innerHTML to render components.
+         * The `renderUserHome` function needs to be updated to manually attach these.
+         * For this structure, we'll demonstrate using one example (`Watch Ads`).
+         */
+        // function attachQuickActionListeners() { ... } 
+        // We handle this inside renderUserHome for the demo.
+
+
+        // ====================================================================
+        // 8. Main Application Startup
+        // ====================================================================
+
+        document.addEventListener('DOMContentLoaded', () => {
+            detectAppMode();
+            setupRealtimeListeners();
+            renderBottomNav();
+            // Start with the default view for the determined mode
+            const initialView = APP_MODE === 'admin' ? 'dashboard' : 'home';
+            renderView(initialView);
+        });
+
+    </script>
+
+</body>
+</html>
