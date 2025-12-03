@@ -808,7 +808,7 @@
                         balance: user.balance - amount
                     });
 
-                    // 2. Add withdrawal request
+                     // 2. Add withdrawal request
                     await db.collection('withdrawals').add({
                         userId: telegramUser.id.toString(),
                         username: telegramUser.username || 'N/A',
@@ -819,3 +819,348 @@
                         requestedAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                 });
+
+                showPopup("Request Sent!", `Withdrawal of **${amount} Coins** to UPI ID **${upiId}** is pending.`);
+                amountInput.value = '';
+                upiIdInput.value = '';
+
+            } catch (e) {
+                console.error("Withdrawal transaction failed: ", e);
+                showPopup("Error", "Failed to submit withdrawal request: " + e.message);
+
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '💸 Request Withdrawal';
+            }
+        }
+
+        /**
+         * Fetches and displays the user's withdrawal history.
+         * @param {string} userId - The current user's Telegram ID.
+         */
+        function fetchAndDisplayUserWithdrawalHistory(userId) {
+            const list = document.getElementById('withdrawal-history-list');
+            list.innerHTML = '<p class="text-gray-400 text-sm">Loading history...</p>';
+
+            db.collection('withdrawals').where('userId', '==', userId).orderBy('requestedAt', 'desc')
+                .onSnapshot(snapshot => {
+                    if (snapshot.empty) {
+                        list.innerHTML = '<p class="text-gray-400 text-sm">No withdrawal history found.</p>';
+                        return;
+                    }
+
+                    list.innerHTML = '';
+                    snapshot.forEach(doc => {
+                        const item = doc.data();
+                        let statusColor = '';
+                        let statusIcon = '';
+
+                        if (item.status === 'Accepted') {
+                            statusColor = 'bg-green-600';
+                            statusIcon = '✅';
+                        } else if (item.status === 'Rejected') {
+                            statusColor = 'bg-red-600';
+                            statusIcon = '❌';
+                        } else {
+                            statusColor = 'bg-yellow-600';
+                            statusIcon = '⏳';
+                        }
+
+                        const dateStr = item.requestedAt ? new Date(item.requestedAt.toDate()).toLocaleDateString() : 'N/A';
+
+                        const listItem = document.createElement('div');
+                        listItem.className = 'glass-card flex justify-between items-center p-3 text-sm';
+                        listItem.innerHTML = `
+                            <div>
+                                <p class="font-bold">Amount: ${item.amount.toLocaleString()} 💰</p>
+                                <p class="text-xs text-gray-400">UPI: ${item.upiId}</p>
+                            </div>
+                            <div class="${statusColor} text-white px-2 py-1 rounded-full text-xs font-semibold">
+                                ${statusIcon} ${item.status}
+                            </div>
+                        `;
+                        list.appendChild(listItem);
+
+                        // Real-time notification for status change
+                        if (doc.metadata.hasPendingWrites === false && item.status !== 'Pending' && currentUser.lastWithdrawalStatus !== item.status) {
+                            showPopup("Withdrawal Update!", `Your request of ${item.amount} Coins has been **${item.status}**!`);
+                            // Small hack to prevent repeated notifications on every snapshot.
+                            // In a real app, you'd track a "last_notified_status" field in the user doc.
+                            currentUser.lastWithdrawalStatus = item.status;
+                        }
+                    });
+                });
+        }
+
+        /**
+         * Fetches and displays the user's referral history.
+         */
+        function fetchAndDisplayUserReferralHistory() {
+            const list = document.getElementById('referral-history-list');
+            const userId = telegramUser.id.toString();
+            list.innerHTML = '<p class="text-gray-400 text-sm">Loading referrals...</p>';
+
+            db.collection('referrals').where('referrerId', '==', userId).orderBy('timestamp', 'desc')
+                .onSnapshot(snapshot => {
+                    if (snapshot.empty) {
+                        list.innerHTML = '<p class="text-gray-400 text-sm">You haven\'t referred anyone yet.</p>';
+                        return;
+                    }
+
+                    list.innerHTML = '';
+                    snapshot.forEach(doc => {
+                        const item = doc.data();
+                        const listItem = document.createElement('div');
+                        listItem.className = 'glass-card flex justify-between items-center p-3 text-sm';
+                        listItem.innerHTML = `
+                            <div>
+                                <p class="font-bold">Referred: ${item.referredUsername || 'User'}</p>
+                                <p class="text-xs text-gray-400">ID: ${item.referredId}</p>
+                            </div>
+                            <div class="bg-purple-600 text-white px-2 py-1 rounded-full text-xs font-semibold">
+                                +${item.reward.toLocaleString()} 💰
+                            </div>
+                        `;
+                        list.appendChild(listItem);
+                    });
+                });
+        }
+
+        /**
+         * Copies the referral link to the clipboard.
+         */
+        function copyReferralLink() {
+            const linkInput = document.getElementById('referral-link');
+            linkInput.select();
+            document.execCommand('copy');
+            showPopup("Copied!", "Your referral link has been copied to your clipboard.");
+            window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+        }
+
+
+        // === 5. ADMIN PANEL FUNCTIONS ===
+
+        /**
+         * Renders the list of tasks for admin management.
+         * @param {Array<object>} tasks - Array of task objects from Firestore.
+         */
+        function renderAdminTasks(tasks) {
+            const list = document.getElementById('admin-tasks-list');
+            list.innerHTML = '';
+
+            if (tasks.length === 0) {
+                list.innerHTML = '<p class="text-gray-400 mt-4">No tasks in database.</p>';
+                return;
+            }
+
+            tasks.forEach(task => {
+                const taskCard = document.createElement('div');
+                taskCard.id = `admin-task-${task.id}`;
+                taskCard.className = 'glass-card border-l-4 border-indigo-500 p-4';
+                taskCard.innerHTML = `
+                    <h4 class="text-lg font-bold">${task.title}</h4>
+                    <p class="text-sm text-gray-400 mb-2">${task.description}</p>
+                    <p class="text-yellow-400 font-semibold">Reward: ${task.reward.toLocaleString()} 💰 | Link: <a href="${task.link}" target="_blank" class="text-blue-400 hover:text-blue-300">View</a></p>
+                    <div class="mt-3 flex space-x-2">
+                        <button onclick="deleteTask('${task.id}')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-xs transition-all duration-200">
+                            🗑️ Delete
+                        </button>
+                    </div>
+                `;
+                list.appendChild(taskCard);
+            });
+        }
+
+        /**
+         * Adds a new task to Firebase.
+         */
+        async function addNewTask() {
+            const title = document.getElementById('task-title').value.trim();
+            const description = document.getElementById('task-description').value.trim();
+            const reward = parseInt(document.getElementById('task-reward').value);
+            const link = document.getElementById('task-link').value.trim();
+
+            if (!title || !description || !reward || !link || reward <= 0) {
+                showPopup("Error", "Please fill all fields with valid data.");
+                return;
+            }
+
+            try {
+                await db.collection('tasks').add({
+                    title: title,
+                    description: description,
+                    reward: reward,
+                    link: link,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                showPopup("Success", `Task "**${title}**" published instantly!`);
+                // Clear form
+                document.getElementById('task-title').value = '';
+                document.getElementById('task-description').value = '';
+                document.getElementById('task-reward').value = '';
+                document.getElementById('task-link').value = '';
+
+            } catch (e) {
+                console.error("Error adding task: ", e);
+                showPopup("Error", "Failed to add task.");
+            }
+        }
+
+        /**
+         * Deletes a task from Firebase.
+         * @param {string} taskId - The ID of the task to delete.
+         */
+        async function deleteTask(taskId) {
+            if (!confirm("Are you sure you want to delete this task?")) return;
+
+            try {
+                await db.collection('tasks').doc(taskId).delete();
+                showPopup("Success", "Task deleted instantly!");
+            } catch (e) {
+                console.error("Error deleting task: ", e);
+                showPopup("Error", "Failed to delete task.");
+            }
+        }
+
+        /**
+         * Renders the list of pending withdrawal requests for the admin.
+         * @param {Array<object>} requests - Array of withdrawal request objects.
+         */
+        function renderAdminWithdrawalRequests(requests) {
+            const list = document.getElementById('withdrawal-requests-list');
+            list.innerHTML = '';
+
+            if (requests.length === 0) {
+                list.innerHTML = '<p class="text-gray-400 mt-4">No pending withdrawal requests.</p>';
+                return;
+            }
+
+            requests.forEach(req => {
+                const requestCard = document.createElement('div');
+                requestCard.className = 'glass-card border-l-4 border-yellow-500 p-4';
+                requestCard.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-bold text-lg">${req.amount.toLocaleString()} 💰 - ${req.firstName}</p>
+                            <p class="text-sm text-gray-400">@${req.username || 'N/A'} (ID: ${req.userId})</p>
+                            <p class="text-sm font-mono text-yellow-300 mt-1">UPI: ${req.upiId}</p>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button onclick="updateWithdrawalStatus('${req.id}', 'Accepted', ${req.amount}, '${req.userId}')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-3 rounded-lg text-sm transition-all duration-200">
+                                ✅ Accept
+                            </button>
+                            <button onclick="updateWithdrawalStatus('${req.id}', 'Rejected', ${req.amount}, '${req.userId}')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-lg text-sm transition-all duration-200">
+                                ❌ Reject
+                            </button>
+                        </div>
+                    </div>
+                `;
+                list.appendChild(requestCard);
+            });
+        }
+
+        /**
+         * Updates the status of a withdrawal request.
+         * @param {string} requestId - ID of the withdrawal document.
+         * @param {string} status - New status ('Accepted' or 'Rejected').
+         * @param {number} amount - The withdrawal amount.
+         * @param {string} userId - The user's ID.
+         */
+        async function updateWithdrawalStatus(requestId, status, amount, userId) {
+            try {
+                const requestRef = db.collection('withdrawals').doc(requestId);
+                const userRef = db.collection('users').doc(userId);
+
+                await db.runTransaction(async (transaction) => {
+                    // 1. Update the withdrawal request status
+                    transaction.update(requestRef, {
+                        status: status,
+                        processedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        processedBy: telegramUser.id.toString()
+                    });
+
+                    // 2. Handle rejection (return coins to user)
+                    if (status === 'Rejected') {
+                        const userDoc = await transaction.get(userRef);
+                        const user = userDoc.data();
+                        transaction.update(userRef, {
+                            balance: user.balance + amount
+                        });
+                    }
+
+                    // 3. Handle acceptance (update total withdrawal stats)
+                    if (status === 'Accepted') {
+                         const userDoc = await transaction.get(userRef);
+                        const user = userDoc.data();
+                        transaction.update(userRef, {
+                            totalWithdrawal: user.totalWithdrawal + amount
+                        });
+                    }
+                });
+
+                showPopup("Status Updated", `Withdrawal request **${requestId.substring(0, 4)}...** set to **${status}**.`);
+
+            } catch (e) {
+                console.error(`Error updating withdrawal status to ${status}: `, e);
+                showPopup("Error", `Failed to set withdrawal status to ${status}.`);
+            }
+        }
+
+        /**
+         * Manually adjusts a user's coin balance.
+         */
+        async function adjustUserBalance() {
+            const userId = document.getElementById('manual-user-id').value.trim();
+            const amount = parseInt(document.getElementById('manual-amount').value);
+
+            if (!userId || !amount) {
+                showPopup("Error", "Please enter a User ID and an amount.");
+                return;
+            }
+
+            try {
+                const userRef = db.collection('users').doc(userId);
+                await db.runTransaction(async (transaction) => {
+                    const userDoc = await transaction.get(userRef);
+                    if (!userDoc.exists) throw new Error("User not found!");
+
+                    const user = userDoc.data();
+                    const newBalance = user.balance + amount;
+
+                    transaction.update(userRef, {
+                        balance: newBalance,
+                        totalEarn: user.totalEarn + (amount > 0 ? amount : 0) // Only count positive adjustments in totalEarn
+                    });
+                });
+
+                showPopup("Success", `Balance for User ID **${userId}** adjusted by **${amount} Coins**.`);
+                document.getElementById('manual-user-id').value = '';
+                document.getElementById('manual-amount').value = '';
+            } catch (e) {
+                console.error("Balance adjustment failed: ", e);
+                showPopup("Error", "Failed to adjust balance: " + e.message);
+            }
+        }
+
+        /**
+         * Placeholder for sending a broadcast message (requires external bot API).
+         */
+        function sendBroadcast() {
+            const message = document.getElementById('broadcast-message').value.trim();
+            if (!message) {
+                showPopup("Note", "Broadcast message is empty.");
+                return;
+            }
+            // In a real application, this function would call an external API endpoint
+            // (on your server) which uses the Telegram Bot API to send a message to all users.
+            showPopup("Broadcast Placeholder", `Broadcast message: "**${message.substring(0, 30)}...**" has been logged. Actual sending requires a backend server.`);
+            document.getElementById('broadcast-message').value = '';
+        }
+
+        // === 6. APPLICATION STARTUP ===
+        window.onload = initializeApp;
+
+    </script>
+</body>
+</html>
