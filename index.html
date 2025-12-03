@@ -1,1166 +1,465 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
-    <title>CoinEarn Mini App</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
-    <style>
-        /* Custom Styles for Mini App, Glassmorphism, and Responsiveness */
-        body {
-            /* Ensures full-screen mobile experience within Telegram */
-            background-color: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #000000);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            padding-bottom: 70px; /* Space for the bottom navigation */
-        }
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>User Panel | Mini Web Bot</title>
 
-        /* Glassmorphism Card Style */
-        .glass-card {
-            background-color: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border-radius: 1rem;
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-            padding: 1rem;
-            margin-bottom: 1rem;
-            transition: all 0.3s ease;
-        }
+  <!-- Firebase (compat) SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
 
-        /* Modern Gradient Background */
-        .app-container {
-            flex-grow: 1;
-            background: linear-gradient(135deg, var(--tg-theme-button-color, #2481cc), var(--tg-theme-secondary-bg-color, #17212b));
-        }
+  <!-- Telegram WebApp -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-        /* Bottom Navigation Bar */
-        .bottom-nav {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 60px;
-            background-color: var(--tg-theme-secondary-bg-color, #17212b);
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            z-index: 100;
-        }
-
-        .bottom-nav button {
-            transition: all 0.2s ease;
-            color: var(--tg-theme-hint-color, #708499);
-        }
-
-        .bottom-nav button.active {
-            color: var(--tg-theme-button-color, #2481cc);
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-
-        /* Page transitions */
-        .page {
-            display: none;
-            opacity: 0;
-            transition: opacity 0.3s ease-in-out;
-            padding: 1rem;
-            min-height: 100%;
-        }
-
-        .page.active {
-            display: block;
-            opacity: 1;
-        }
-
-        /* Custom Scrollbar for better UX */
-        ::-webkit-scrollbar {
-            width: 4px;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: var(--tg-theme-button-color, #2481cc);
-            border-radius: 2px;
-        }
-        ::-webkit-scrollbar-track {
-            background: var(--tg-theme-secondary-bg-color, #17212b);
-        }
-    </style>
+  <style>
+    :root{
+      --bg:#f5f8ff;
+      --card:#ffffff;
+      --muted:#6b7280;
+      --accent:#2563eb;
+      --success:#16a34a;
+      --danger:#ef4444;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    body{margin:0;background:var(--bg);color:#0f172a; -webkit-font-smoothing:antialiased;}
+    .wrap{max-width:920px;margin:16px auto;padding:12px;}
+    header{display:flex;gap:12px;align-items:center;margin-bottom:12px;}
+    .avatar{width:64px;height:64px;border-radius:12px;object-fit:cover;background:#eee;}
+    .userinfo h1{font-size:18px;margin:0 0 4px 0;}
+    .userinfo p{margin:0;color:var(--muted);font-size:13px;}
+    .banner{background:#fff3cd;border-left:4px solid #ffd027;padding:10px;border-radius:10px;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+    .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px;}
+    .card{background:var(--card);padding:12px;border-radius:12px;box-shadow:0 6px 18px rgba(15,23,42,0.04);min-height:72px;}
+    .card .label{color:var(--muted);font-size:12px;}
+    .card .value{font-size:18px;font-weight:700;margin-top:6px;}
+    .ref-link{display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13px;color:var(--muted);word-break:break-all;}
+    .tabs{display:flex;gap:8px;margin:12px 0;}
+    .tab{padding:8px 12px;border-radius:10px;background:transparent;border:1px solid transparent;color:var(--muted);cursor:pointer;}
+    .tab.active{background:var(--card);border-color:rgba(15,23,42,0.06);color:var(--accent);font-weight:600;}
+    .section{margin-bottom:14px;}
+    .task-list{display:grid;gap:8px;}
+    .task{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:10px;background:var(--card);box-shadow:0 6px 12px rgba(15,23,42,0.03);}
+    .task .meta{max-width:62%;}
+    .task .meta h4{margin:0 0 6px 0;font-size:15px;}
+    .task .meta p{margin:0;color:var(--muted);font-size:13px;}
+    .btn{padding:8px 10px;border-radius:8px;border:0;cursor:pointer;font-weight:600;}
+    .btn-primary{background:var(--accent);color:white;}
+    .btn-ghost{background:transparent;border:1px solid rgba(15,23,42,0.06);color:var(--muted);}
+    .btn-success{background:var(--success);color:white;}
+    .small{font-size:13px;padding:6px 8px;border-radius:8px;}
+    .muted{color:var(--muted);font-size:13px;}
+    .controls{display:flex;gap:8px;align-items:center;}
+    .input{padding:8px;border-radius:8px;border:1px solid #e6edf3;background:white;width:100%;}
+    .row{display:flex;gap:8px;}
+    .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:#111;color:white;padding:10px 14px;border-radius:8px;display:none;}
+    @media(max-width:520px){
+      header{align-items:flex-start;}
+      .avatar{width:56px;height:56px;}
+    }
+  </style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen flex flex-col">
-
-    <header id="top-bar" class="sticky top-0 p-4 shadow-lg flex justify-between items-center z-50"
-            style="background-color: var(--tg-theme-secondary-bg-color, #17212b);">
-        <h1 id="app-title" class="text-xl font-bold">Loading...</h1>
-        <div id="user-balance-display" class="hidden flex items-center bg-green-500 rounded-full px-3 py-1 text-sm font-semibold shadow-md">
-            <span class="mr-1">💰</span>
-            <span id="user-balance">0</span>
+<body>
+  <div class="wrap">
+    <header>
+      <img id="userPic" class="avatar" src="" alt="avatar" />
+      <div class="userinfo">
+        <h1 id="userName">Guest</h1>
+        <p id="userId">ID: --</p>
+        <div class="ref-link" style="margin-top:6px">
+          <span class="muted">Referral:</span>
+          <span id="refLink" style="font-weight:600;color:var(--accent);margin-left:6px">--</span>
+          <button id="copyRef" class="btn btn-ghost small" style="margin-left:auto">Copy</button>
         </div>
+      </div>
     </header>
 
-    <main id="app-content" class="app-container p-4 flex-grow overflow-y-auto">
-        <div id="user-home-page" class="page active">
-            <h2 class="text-2xl font-bold mb-4">Dashboard 🚀</h2>
-            <div id="user-dashboard-cards" class="grid grid-cols-2 gap-4 mb-6">
-                <div class="glass-card flex flex-col items-center justify-center text-center p-3">
-                    <div class="text-3xl font-bold text-green-400" id="total-earn">0</div>
-                    <div class="text-sm mt-1 text-gray-300">Total Earn (💰)</div>
-                </div>
-                <div class="glass-card flex flex-col items-center justify-center text-center p-3">
-                    <div class="text-3xl font-bold text-red-400" id="total-withdrawal">0</div>
-                    <div class="text-sm mt-1 text-gray-300">Total Withdrawal (🏦)</div>
-                </div>
-                <div class="glass-card flex flex-col items-center justify-center text-center p-3">
-                    <div class="text-3xl font-bold text-yellow-400" id="ads-watched">0</div>
-                    <div class="text-sm mt-1 text-gray-300">Ads Watched (📺)</div>
-                </div>
-                <div class="glass-card flex flex-col items-center justify-center text-center p-3">
-                    <div class="text-3xl font-bold text-blue-400" id="total-tasks-done">0</div>
-                    <div class="text-sm mt-1 text-gray-300">Tasks Done (✅)</div>
-                </div>
-            </div>
+    <!-- Announcement banner -->
+    <div id="announcement" class="banner" style="display:none">
+      <div id="announcementText" style="font-weight:600;color:#7a5800"></div>
+      <button id="dismissAnn" class="btn btn-ghost small" style="margin-left:auto">Dismiss</button>
+    </div>
 
-            <h3 class="text-xl font-semibold mb-3">Quick Actions</h3>
-            <div class="grid grid-cols-2 gap-4">
-                <button onclick="navigateTo('watch-ads-page')" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-transform transform hover:scale-105">
-                    📺 Watch Ads
-                </button>
-                <button onclick="navigateTo('tasks-page')" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-transform transform hover:scale-105">
-                    ✅ Tasks
-                </button>
-                <button onclick="navigateTo('withdraw-page')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-transform transform hover:scale-105">
-                    🏦 Withdraw
-                </button>
-                <button onclick="navigateTo('profile-page')" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-transform transform hover:scale-105">
-                    👤 Profile
-                </button>
-            </div>
+    <!-- Tabs -->
+    <div class="tabs">
+      <div id="tabDashboard" class="tab active">Dashboard</div>
+      <div id="tabTasks" class="tab">Tasks</div>
+    </div>
+
+    <!-- Dashboard content -->
+    <div id="dashboardView">
+      <div class="cards section" id="statsCards">
+        <div class="card">
+          <div class="label">Total ₹</div>
+          <div id="totalCoins" class="value">₹0</div>
+        </div>
+        <div class="card">
+          <div class="label">Total Referrals</div>
+          <div id="totalRef" class="value">0</div>
+        </div>
+        <div class="card">
+          <div class="label">Total Withdrawn</div>
+          <div id="totalWithdrawn" class="value">₹0</div>
+        </div>
+        <div class="card">
+          <div class="label">Tasks Completed</div>
+          <div id="tasksCompleted" class="value">0</div>
+        </div>
+      </div>
+
+      <div class="section card">
+        <h3 style="margin:0 0 8px 0">Quick Actions</h3>
+        <div id="quickTasks" class="task-list">
+          <div class="muted">Loading tasks…</div>
+        </div>
+      </div>
+
+      <div class="section card">
+        <h3 style="margin:0 0 8px 0">Withdrawal</h3>
+        <div style="margin-bottom:8px" class="muted">Request withdrawal via UPI (admin will approve).</div>
+        <div class="row" style="margin-bottom:8px">
+          <input id="upi" class="input" placeholder="Enter UPI ID (eg: name@bank)" />
+          <input id="amount" class="input" placeholder="Amount (₹)" type="number" />
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="withdrawBtn" class="btn btn-primary">Request Withdrawal</button>
         </div>
 
-        <div id="watch-ads-page" class="page">
-            <h2 class="text-2xl font-bold mb-4">Watch Ads for Coins</h2>
-            <div class="glass-card text-center">
-                <p class="text-lg mb-4">Earn **10 Coins** for every ad watched!</p>
-                <button id="watch-ad-btn" onclick="startAdSequence()" class="bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 px-6 rounded-full shadow-xl transition-all duration-300 transform hover:scale-105">
-                    ▶️ Watch Ad Now
-                </button>
-                <div id="monotag-ad-placeholder" class="mt-6 p-4 border border-dashed border-gray-500 rounded-lg text-sm text-gray-400 h-24 flex items-center justify-center">
-                    [Monotag Ads Code Placeholder]
-                </div>
-            </div>
+        <div style="margin-top:12px">
+          <h4 style="margin:0 0 8px 0">Recent Withdrawals</h4>
+          <div id="recentWithdrawals" class="muted">No requests yet.</div>
         </div>
+      </div>
+    </div>
 
-        <div id="tasks-page" class="page">
-            <h2 class="text-2xl font-bold mb-4">Daily Tasks</h2>
-            <div id="tasks-list" class="space-y-4">
-                </div>
-            <p id="no-tasks-msg" class="text-gray-400 mt-4 hidden">No tasks available right now. Check back later!</p>
+    <!-- Tasks tab content -->
+    <div id="tasksView" style="display:none">
+      <div class="section card">
+        <h3 style="margin:0 0 8px 0">All Tasks</h3>
+        <div style="margin-bottom:8px">
+          <input id="searchTask" class="input" placeholder="Search tasks by name or type" />
         </div>
-
-        <div id="withdraw-page" class="page">
-            <h2 class="text-2xl font-bold mb-4">Withdrawal Request</h2>
-            <div class="glass-card">
-                <div class="mb-4">
-                    <label for="withdraw-amount" class="block mb-2 font-semibold">Amount (Coins)</label>
-                    <input type="number" id="withdraw-amount" placeholder="Min 1000 Coins" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div class="mb-6">
-                    <label for="upi-id" class="block mb-2 font-semibold">UPI ID</label>
-                    <input type="text" id="upi-id" placeholder="yourname@bankupi" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <button id="request-withdraw-btn" onclick="requestWithdrawal()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-all duration-200">
-                    💸 Request Withdrawal
-                </button>
-            </div>
-
-            <h3 class="text-xl font-bold mt-8 mb-4">Withdrawal History</h3>
-            <div id="withdrawal-history-list" class="space-y-3">
-                <p class="text-gray-400 text-sm">Loading history...</p>
-            </div>
+        <div id="allTasks" class="task-list">
+          <div class="muted">Loading tasks…</div>
         </div>
+      </div>
+    </div>
+  </div>
 
-        <div id="profile-page" class="page">
-            <h2 class="text-2xl font-bold mb-4">Your Profile</h2>
-            <div id="profile-details" class="space-y-3 glass-card">
-                </div>
+  <div id="toast" class="toast"></div>
 
-            <h3 class="text-xl font-bold mt-8 mb-4">Refer & Earn (500 Coins!)</h3>
-            <div class="glass-card p-4">
-                <p class="mb-3">Share your unique link to invite friends. You both get **500 Coins**!</p>
-                <input type="text" id="referral-link" readonly class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-sm mb-3">
-                <button onclick="copyReferralLink()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded-xl transition-all duration-200">
-                    🔗 Copy Link
-                </button>
-            </div>
-
-            <h3 class="text-xl font-bold mt-8 mb-4">Referral History</h3>
-            <div id="referral-history-list" class="space-y-3">
-                <p class="text-gray-400 text-sm">Loading referrals...</p>
-            </div>
-        </div>
-
-        <div id="admin-dashboard-page" class="page active">
-            <h2 class="text-2xl font-bold mb-4">Admin Dashboard 👑</h2>
-            <div id="admin-dashboard-cards" class="grid grid-cols-2 gap-4 mb-6">
-                <div class="glass-card flex flex-col items-center justify-center text-center p-3">
-                    <div class="text-3xl font-bold text-green-400" id="total-users-admin">0</div>
-                    <div class="text-sm mt-1 text-gray-300">Total Users</div>
-                </div>
-                <div class="glass-card flex flex-col items-center justify-center text-center p-3">
-                    <div class="text-3xl font-bold text-red-400" id="total-tasks-admin">0</div>
-                    <div class="text-sm mt-1 text-gray-300">Total Tasks</div>
-                </div>
-                <div class="glass-card flex flex-col items-center justify-center text-center p-3">
-                    <div class="text-3xl font-bold text-yellow-400" id="total-withdrawals-admin">0</div>
-                    <div class="text-sm mt-1 text-gray-300">Total Withdrawals</div>
-                </div>
-                <div class="glass-card flex flex-col items-center justify-center text-center p-3">
-                    <div class="text-3xl font-bold text-blue-400" id="total-ads-admin">0</div>
-                    <div class="text-sm mt-1 text-gray-300">Total Ads Watched</div>
-                </div>
-            </div>
-
-            <h3 class="text-xl font-semibold mb-3">Admin Quick Tools</h3>
-            <div class="space-y-4">
-                <button onclick="navigateTo('admin-task-management-page')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition-transform transform hover:scale-105">
-                    ➕ Manage Tasks
-                </button>
-                <button onclick="navigateTo('admin-withdrawal-management-page')" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-xl shadow-lg transition-transform transform hover:scale-105">
-                    🏦 Manage Withdrawals
-                </button>
-                <button onclick="navigateTo('admin-tools-page')" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 rounded-xl shadow-lg transition-transform transform hover:scale-105">
-                    ⚙️ Admin Tools
-                </button>
-            </div>
-        </div>
-
-        <div id="admin-task-management-page" class="page">
-            <h2 class="text-2xl font-bold mb-4">Task Management</h2>
-
-            <div class="glass-card mb-6 p-4">
-                <h3 class="text-xl font-semibold mb-3">➕ Add New Task</h3>
-                <input type="text" id="task-title" placeholder="Title" class="w-full p-3 mb-3 bg-gray-800 border border-gray-700 rounded-lg">
-                <textarea id="task-description" placeholder="Description" rows="2" class="w-full p-3 mb-3 bg-gray-800 border border-gray-700 rounded-lg"></textarea>
-                <input type="number" id="task-reward" placeholder="Reward (Coins)" class="w-full p-3 mb-3 bg-gray-800 border border-gray-700 rounded-lg">
-                <input type="url" id="task-link" placeholder="Visit Link (e.g., https://example.com)" class="w-full p-3 mb-4 bg-gray-800 border border-gray-700 rounded-lg">
-                <button onclick="addNewTask()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded-xl transition-all duration-200">
-                    Publish Task
-                </button>
-            </div>
-
-            <h3 class="text-xl font-bold mb-4">Current Tasks</h3>
-            <div id="admin-tasks-list" class="space-y-4">
-                </div>
-        </div>
-
-        <div id="admin-withdrawal-management-page" class="page">
-            <h2 class="text-2xl font-bold mb-4">Withdrawal Requests</h2>
-            <div id="withdrawal-requests-list" class="space-y-4">
-                <p class="text-gray-400 text-sm">Loading requests...</p>
-            </div>
-        </div>
-
-        <div id="admin-tools-page" class="page">
-            <h2 class="text-2xl font-bold mb-4">Admin Tools</h2>
-
-            <div class="glass-card mb-6 p-4">
-                <h3 class="text-xl font-semibold mb-3">Manual Balance Adjust</h3>
-                <input type="number" id="manual-user-id" placeholder="User Telegram ID" class="w-full p-3 mb-3 bg-gray-800 border border-gray-700 rounded-lg">
-                <input type="number" id="manual-amount" placeholder="Amount to Add/Subtract (+/-)" class="w-full p-3 mb-3 bg-gray-800 border border-gray-700 rounded-lg">
-                <button onclick="adjustUserBalance()" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 rounded-xl transition-all duration-200">
-                    Apply Adjustment
-                </button>
-            </div>
-
-            <div class="glass-card p-4">
-                <h3 class="text-xl font-semibold mb-3">Broadcast Message</h3>
-                <textarea id="broadcast-message" placeholder="Message to send to all users (Optional)" rows="3" class="w-full p-3 mb-3 bg-gray-800 border border-gray-700 rounded-lg"></textarea>
-                <button onclick="sendBroadcast()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-xl transition-all duration-200">
-                    Send Broadcast
-                </button>
-                <p class="text-xs text-gray-400 mt-2">Note: This is a placeholder function; actual Telegram message broadcast requires a separate bot API server.</p>
-            </div>
-        </div>
-
-        <div id="system-popup" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[200] hidden">
-            <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full text-center" style="color: var(--tg-theme-text-color, #000);">
-                <h3 id="popup-title" class="text-xl font-bold mb-3">Notification</h3>
-                <p id="popup-message" class="mb-4">Message content.</p>
-                <button onclick="hidePopup()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-200">
-                    OK
-                </button>
-            </div>
-        </div>
-
-    </main>
-
-    <footer id="bottom-nav" class="bottom-nav flex justify-around items-center px-2">
-        </footer>
-
-    <script>
-        // === 1. CONFIGURATION & INITIALIZATION ===
-
-        // TODO: Replace with your actual Firebase configuration
-        const firebaseConfig = {
-  apiKey: "AIzaSyASWPlUEjeTOWVj-EShNtGaeeZQHMv3yxE",
-  authDomain: "dm-coin-farming-point.firebaseapp.com",
-  projectId: "dm-coin-farming-point",
-  storageBucket: "dm-coin-farming-point.firebasestorage.app",
-  messagingSenderId: "245444140845",
-  appId: "1:245444140845:web:7480bfa27949c180e3bda4"
+  <!-- Script -->
+  <script>
+  /***** ====== CONFIG PLACEHOLDERS ======
+   * Replace firebaseConfig below with your Firebase credentials.
+   * Replace BOT_USERNAME with your bot username (no @).
+   *****************************************/
+  const firebaseConfig = {
+  apiKey: "AIzaSyD-EiTLr-bDDDKgR5tvzguyNfdlKDO8Rw8",
+  authDomain: "tap-and-earn-d3583.firebaseapp.com",
+  projectId: "tap-and-earn-d3583",
+  storageBucket: "tap-and-earn-d3583.firebasestorage.app",
+  messagingSenderId: "759083332180",
+  appId: "1:759083332180:web:165eb0bf070956fb0033c1"
 };
+  const BOT_USERNAME = "earn_with_finisher_bot"; // e.g. "my_bot"
 
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
+  /***** ====== INIT FIREBASE (compat) ====== *****/
+  const app = firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  const FieldValue = firebase.firestore.FieldValue;
 
-        // Global variables
-        const urlParams = new URLSearchParams(window.location.search);
-        const isUserMode = urlParams.get('user') === 'true';
-        const isAdminMode = urlParams.get('admin') === 'true';
-        let currentUser = null;
-        let telegramUser = window.Telegram.WebApp.initDataUnsafe.user || {
-            id: 123456789, // Placeholder for testing outside Telegram
-            first_name: "Test",
-            username: "tester"
-        };
-        const REFERRAL_REWARD = 500; // Coins per referral
+  /***** ====== TELEGRAM WEBAPP INIT ====== *****/
+  const tg = window.Telegram?.WebApp;
+  try { if (tg) tg.expand(); } catch(e){/* ignore */ }
 
-        // === 2. UI UTILITY FUNCTIONS ===
+  // Get user info: try Telegram WebApp context, fallback to URL params or guest
+  const urlParams = new URLSearchParams(location.search);
+  const startParam = urlParams.get("start") || (tg?.initDataUnsafe?.start_param) || null;
 
-        /**
-         * Shows a notification popup to the user.
-         * @param {string} title
-         * @param {string} message
-         */
-        function showPopup(title, message) {
-            document.getElementById('popup-title').innerText = title;
-            document.getElementById('popup-message').innerText = message;
-            document.getElementById('system-popup').classList.remove('hidden');
-            window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+  const tgUser = (tg?.initDataUnsafe?.user) ? tg.initDataUnsafe.user : null;
+  const user = {
+    id: tgUser?.id || urlParams.get("userId") || ("guest_" + Math.floor(Math.random()*10000)),
+    name: tgUser?.first_name || tgUser?.username || "Guest",
+    photoURL: tgUser?.photo_url || ""
+  };
+
+  // DOM refs
+  const userPic = document.getElementById("userPic");
+  const userName = document.getElementById("userName");
+  const userIdEl = document.getElementById("userId");
+  const refLinkEl = document.getElementById("refLink");
+  const copyRefBtn = document.getElementById("copyRef");
+
+  const announcementEl = document.getElementById("announcement");
+  const announcementText = document.getElementById("announcementText");
+  const dismissAnn = document.getElementById("dismissAnn");
+
+  const totalCoinsEl = document.getElementById("totalCoins");
+  const totalRefEl = document.getElementById("totalRef");
+  const totalWithdrawnEl = document.getElementById("totalWithdrawn");
+  const tasksCompletedEl = document.getElementById("tasksCompleted");
+
+  const quickTasksEl = document.getElementById("quickTasks");
+  const allTasksEl = document.getElementById("allTasks");
+  const recentWithdrawalsEl = document.getElementById("recentWithdrawals");
+
+  const upiInput = document.getElementById("upi");
+  const amountInput = document.getElementById("amount");
+  const withdrawBtn = document.getElementById("withdrawBtn");
+
+  const tabDashboard = document.getElementById("tabDashboard");
+  const tabTasks = document.getElementById("tabTasks");
+  const dashboardView = document.getElementById("dashboardView");
+  const tasksView = document.getElementById("tasksView");
+  const searchTask = document.getElementById("searchTask");
+
+  const toastEl = document.getElementById("toast");
+
+  /***** ====== UTIL ====== *****/
+  function showToast(msg, timeout=3000){
+    toastEl.textContent = msg;
+    toastEl.style.display = "block";
+    setTimeout(()=>toastEl.style.display = "none", timeout);
+  }
+
+  function formatRupee(n){ return "₹" + (Number(n)||0); }
+
+  function referralLinkFor(id){ return `https://t.me/${BOT_USERNAME}?start=${id}`; }
+
+  /***** ====== USER DOC REF & INIT ====== *****/
+  const uid = String(user.id);
+  const userRef = db.collection("users").doc(uid);
+
+  async function createUserIfNotExists(){
+    const snap = await userRef.get();
+    if (!snap.exists){
+      const doc = {
+        id: uid,
+        name: user.name,
+        photoURL: user.photoURL || "",
+        coins: 0,
+        reffer: 0,
+        refferBy: startParam || null,
+        tasksCompleted: 0,
+        totalWithdrawals: 0,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      await userRef.set(doc, { merge: true });
+    } else {
+      // if user exists but refferBy is not set and startParam exists - set it once
+      if (startParam && !snap.data().refferBy){
+        await userRef.set({ refferBy: startParam }, { merge: true });
+      }
+    }
+  }
+
+  /***** ====== RENDER BASIC INFO ====== *****/
+  function renderBasic(){
+    userPic.src = user.photoURL || ("https://cdn.jsdelivr.net/gh/edent/SuperTinyIcons/images/svg/telegram.svg");
+    userName.textContent = user.name || "Guest";
+    userIdEl.textContent = "ID: " + uid;
+    refLinkEl.textContent = referralLinkFor(uid);
+  }
+
+  copyRefBtn.addEventListener("click", async ()=>{
+    try{
+      await navigator.clipboard.writeText(referralLinkFor(uid));
+      showToast("Referral copied!");
+    }catch(e){
+      showToast("Copy failed - long press the link");
+    }
+  });
+
+  /***** ====== ANNOUNCEMENT (realtime) ====== *****/
+  let annDismissed = false;
+  dismissAnn.addEventListener("click", ()=>{
+    announcementEl.style.display = "none";
+    annDismissed = true;
+  });
+
+  db.collection("announcements").orderBy("createdAt","desc").limit(1)
+    .onSnapshot(snap=>{
+      if (snap.empty) {
+        announcementEl.style.display = "none";
+        return;
+      }
+      snap.forEach(doc=>{
+        const a = doc.data();
+        if (!annDismissed) {
+          announcementText.textContent = a.title || (a.body||"Announcement");
+          announcementEl.style.display = "flex";
         }
-
-        function hidePopup() {
-            document.getElementById('system-popup').classList.add('hidden');
-        }
-
-        /**
-         * Handles page navigation and transition.
-         * @param {string} pageId The ID of the page to navigate to (e.g., 'user-home-page').
-         */
-        function navigateTo(pageId) {
-            document.querySelectorAll('.page').forEach(page => {
-                page.classList.remove('active');
-            });
-            document.getElementById(pageId).classList.add('active');
-
-            // Update active state on bottom navigation
-            document.querySelectorAll('.bottom-nav button').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            const navButton = document.querySelector(`[onclick*="${pageId}"]`);
-            if (navButton) {
-                navButton.classList.add('active');
-            }
-
-            // Update app title
-            const titleMap = {
-                'user-home-page': 'Dashboard',
-                'watch-ads-page': 'Watch Ads',
-                'tasks-page': 'Tasks',
-                'withdraw-page': 'Withdraw',
-                'profile-page': 'Profile',
-                'admin-dashboard-page': 'Admin Dashboard',
-                'admin-task-management-page': 'Manage Tasks',
-                'admin-withdrawal-management-page': 'Manage Withdrawals',
-                'admin-tools-page': 'Admin Tools'
-            };
-            document.getElementById('app-title').innerText = titleMap[pageId] || 'CoinEarn App';
-
-            // Show balance only in user mode
-            document.getElementById('user-balance-display').classList.toggle('hidden', !isUserMode);
-        }
-
-         /**
-         * Builds the bottom navigation bar based on the mode.
-         */
-        function setupBottomNav() {
-            const nav = document.getElementById('bottom-nav');
-            nav.innerHTML = ''; // Clear existing buttons
-
-            if (isUserMode) {
-                const userNavItems = [
-                    { id: 'user-home-page', icon: '🏠', label: 'Home' },
-                    { id: 'tasks-page', icon: '✅', label: 'Tasks' },
-                    { id: 'withdraw-page', icon: '🏦', label: 'Withdraw' },
-                    { id: 'profile-page', icon: '👤', label: 'Profile' }
-                ];
-
-                userNavItems.forEach(item => {
-                    const btn = document.createElement('button');
-                    btn.className = 'flex flex-col items-center justify-center p-2 text-xs h-full transition-all duration-200';
-                    btn.setAttribute('onclick', `MapsTo('${item.id}')`);
-                    btn.innerHTML = `<span>${item.icon}</span> ${item.label}`;
-                    nav.appendChild(btn);
-                });
-                navigateTo('user-home-page'); // Default page
-            } else if (isAdminMode) {
-                const adminNavItems = [
-                    { id: 'admin-dashboard-page', icon: '👑', label: 'Dashboard' },
-                    { id: 'admin-task-management-page', icon: '📝', label: 'Tasks' },
-                    { id: 'admin-withdrawal-management-page', icon: '💸', label: 'Withdrawals' },
-                    { id: 'admin-tools-page', icon: '⚙️', label: 'Settings' }
-                ];
-
-                adminNavItems.forEach(item => {
-                    const btn = document.createElement('button');
-                    btn.className = 'flex flex-col items-center justify-center p-2 text-xs h-full transition-all duration-200';
-                    btn.setAttribute('onclick', `MapsTo('${item.id}')`);
-                    btn.innerHTML = `<span>${item.icon}</span> ${item.label}`;
-                    nav.appendChild(btn);
-                });
-                navigateTo('admin-dashboard-page'); // Default page
-            } else {
-                // If no valid mode, show an error
-                document.getElementById('app-title').innerText = 'Error';
-                document.getElementById('app-content').innerHTML = '<p class="text-center text-red-500 mt-12">Invalid URL parameter. Use `?user=true` or `?admin=true`.</p>';
-                nav.classList.add('hidden');
-            }
-        }
-
-        // === 3. FIREBASE USER & REAL-TIME LOGIC ===
-
-        /**
-         * Initializes user session and real-time listeners.
-         */
-        async function initializeApp() {
-            window.Telegram.WebApp.ready();
-            window.Telegram.WebApp.expand();
-
-            if (isUserMode) {
-                await setupUserSession();
-                setupUserListeners();
-                fetchAndDisplayUserReferralHistory();
-            } else if (isAdminMode) {
-                setupAdminListeners();
-            }
-
-            setupBottomNav();
-        }
-
-        /**
-         * Sets up the user's document in Firestore (if it doesn't exist)
-         * and processes any referral.
-         */
-        async function setupUserSession() {
-            const userId = telegramUser.id.toString();
-            const userRef = db.collection('users').doc(userId);
-            const userDoc = await userRef.get();
-
-            if (!userDoc.exists) {
-                // Check for referral in URL
-                const referrerId = urlParams.get('ref');
-                const initialData = {
-                    id: userId,
-                    username: telegramUser.username || '',
-                    firstName: telegramUser.first_name || 'User',
-                    balance: 0,
-                    totalEarn: 0,
-                    totalWithdrawal: 0,
-                    adsWatched: 0,
-                    tasksDone: 0,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    referrerId: referrerId || null
-                };
-                await userRef.set(initialData);
-
-                // Handle referral reward
-                if (referrerId && referrerId !== userId) {
-                    const referrerRef = db.collection('users').doc(referrerId);
-                    const referrerDoc = await referrerRef.get();
-
-                    if (referrerDoc.exists) {
-                        // Give reward to the new user
-                        await userRef.update({
-                            balance: REFERRAL_REWARD,
-                            totalEarn: REFERRAL_REWARD
-                        });
-                        showPopup("Welcome Bonus!", `You earned ${REFERRAL_REWARD} Coins for joining!`);
-
-                        // Give reward to the referrer and log the referral
-                        await referrerRef.update({
-                            balance: firebase.firestore.FieldValue.increment(REFERRAL_REWARD),
-                            totalEarn: firebase.firestore.FieldValue.increment(REFERRAL_REWARD),
-                        });
-                        await db.collection('referrals').add({
-                            referrerId: referrerId,
-                            referredId: userId,
-                            referredUsername: telegramUser.username || 'New User',
-                            reward: REFERRAL_REWARD,
-                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-                        showPopup("Referral Reward!", `Your referrer (${referrerDoc.data().username || referrerDoc.data().firstName}) has been rewarded!`);
-                    }
-                }
-            }
-
-            // Set up referral link for the profile page
-            const referralLink = `${window.location.origin}${window.location.pathname}?user=true&ref=${userId}`;
-            document.getElementById('referral-link').value = referralLink;
-        }
-
-        /**
-         * Sets up all real-time Firestore listeners for the User Panel.
-         */
-        function setupUserListeners() {
-            const userId = telegramUser.id.toString();
-
-            // 1. User Data Listener (Dashboard & Profile)
-            db.collection('users').doc(userId).onSnapshot(doc => {
-                if (doc.exists) {
-                    currentUser = doc.data();
-                    updateUserDashboard(currentUser);
-                    updateUserProfile(currentUser);
-                    fetchAndDisplayUserWithdrawalHistory(userId); // Re-fetch on data change
-                }
-            });
-
-            // 2. Tasks Listener (Tasks Page)
-            db.collection('tasks').onSnapshot(snapshot => {
-                renderUserTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            });
-
-            // 3. Withdrawal History is fetched inside the user data listener to ensure up-to-date balance.
-        }
-
-        /**
-         * Sets up all real-time Firestore listeners for the Admin Panel.
-         */
-        function setupAdminListeners() {
-            // 1. Dashboard Metrics
-            db.collection('users').onSnapshot(usersSnapshot => {
-                let totalUsers = usersSnapshot.size;
-                let totalAdsWatched = 0;
-                let totalWithdrawals = 0;
-
-                usersSnapshot.forEach(doc => {
-                    const userData = doc.data();
-                    totalAdsWatched += userData.adsWatched || 0;
-                    totalWithdrawals += userData.totalWithdrawal || 0; // Assuming totalWithdrawal tracks the cumulative amount
-                });
-
-                document.getElementById('total-users-admin').innerText = totalUsers.toLocaleString();
-                document.getElementById('total-ads-admin').innerText = totalAdsWatched.toLocaleString();
-                document.getElementById('total-withdrawals-admin').innerText = totalWithdrawals.toLocaleString();
-            });
-
-            db.collection('tasks').onSnapshot(tasksSnapshot => {
-                document.getElementById('total-tasks-admin').innerText = tasksSnapshot.size.toLocaleString();
-                renderAdminTasks(tasksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            });
-
-            // 2. Withdrawal Requests Listener
-            db.collection('withdrawals').where('status', '==', 'Pending').onSnapshot(snapshot => {
-                renderAdminWithdrawalRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            });
-        }
-
-        // === 4. USER PANEL FUNCTIONS ===
-
-        /**
-         * Updates all dashboard cards and the top bar balance.
-         * @param {object} user - The current user data object.
-         */
-        function updateUserDashboard(user) {
-            document.getElementById('user-balance').innerText = user.balance.toLocaleString();
-            document.getElementById('total-earn').innerText = user.totalEarn.toLocaleString();
-            document.getElementById('total-withdrawal').innerText = user.totalWithdrawal.toLocaleString();
-            document.getElementById('ads-watched').innerText = user.adsWatched.toLocaleString();
-            document.getElementById('total-tasks-done').innerText = user.tasksDone.toLocaleString();
-        }
-
-        /**
-         * Updates the profile page details.
-         * @param {object} user - The current user data object.
-         */
-        function updateUserProfile(user) {
-            const details = document.getElementById('profile-details');
-            details.innerHTML = `
-                <p><strong>Username:</strong> @${user.username || 'N/A'}</p>
-                <p><strong>Name:</strong> ${user.firstName}</p>
-                <p><strong>User ID:</strong> <code>${user.id}</code></p>
-                <p><strong>Total Earn:</strong> <span class="text-green-400 font-bold">${user.totalEarn.toLocaleString()} 💰</span></p>
-                <p><strong>Total Withdraw:</strong> <span class="text-red-400 font-bold">${user.totalWithdrawal.toLocaleString()} 🏦</span></p>
-            `;
-        }
-
-        /**
-         * Starts the 'Watch Ad' sequence.
-         */
-        async function startAdSequence() {
-            const WATCH_REWARD = 10;
-            const btn = document.getElementById('watch-ad-btn');
-
-            // 1. Disable button and simulate ad play/load (Monotag Placeholder)
-            btn.disabled = true;
-            btn.innerHTML = '🔄 Loading Ad... (Wait 5s)';
-            window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
-
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Simulate ad loading time
-
-            // 2. Reward the user
-            const userId = telegramUser.id.toString();
-            const userRef = db.collection('users').doc(userId);
-
-            try {
-                await db.runTransaction(async (transaction) => {
-                    const userDoc = await transaction.get(userRef);
-                    if (!userDoc.exists) throw "User does not exist!";
-                    const user = userDoc.data();
-
-                    transaction.update(userRef, {
-                        balance: user.balance + WATCH_REWARD,
-                        totalEarn: user.totalEarn + WATCH_REWARD,
-                        adsWatched: user.adsWatched + 1
-                    });
-                });
-
-                showPopup("Success!", `You earned ${WATCH_REWARD} Coins! Your new balance is ${currentUser.balance + WATCH_REWARD} 💰`);
-            } catch (e) {
-                console.error("Ad reward transaction failed: ", e);
-                showPopup("Error", "Could not process reward. Please try again.");
-            } finally {
-                // 3. Re-enable button
-                btn.disabled = false;
-                btn.innerHTML = '▶️ Watch Ad Now';
-            }
-        }
-
-        /**
-         * Renders the list of available tasks for the user.
-         * @param {Array<object>} tasks - Array of task objects from Firestore.
-         */
-        function renderUserTasks(tasks) {
-            const list = document.getElementById('tasks-list');
-            list.innerHTML = '';
-
-            if (tasks.length === 0) {
-                document.getElementById('no-tasks-msg').classList.remove('hidden');
-                return;
-            }
-            document.getElementById('no-tasks-msg').classList.add('hidden');
-
-            tasks.forEach(task => {
-                const taskCard = document.createElement('div');
-                taskCard.className = 'glass-card flex justify-between items-center transition-transform hover:scale-[1.01]';
-                taskCard.innerHTML = `
-                    <div>
-                        <h4 class="text-lg font-bold">${task.title}</h4>
-                        <p class="text-sm text-gray-400 mb-2">${task.description}</p>
-                        <p class="text-yellow-400 font-semibold">Reward: ${task.reward.toLocaleString()} 💰</p>
-                    </div>
-                    <button id="task-btn-${task.id}" onclick="startTaskTimer('${task.id}', '${task.link}')" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition-all duration-200">
-                        Visit
-                    </button>
-                `;
-                list.appendChild(taskCard);
-            });
-        }
-
-        /**
-         * Starts the 10-second timer/animation for a task.
-         * @param {string} taskId - The ID of the task.
-         * @param {string} link - The external link to visit.
-         */
-        async function startTaskTimer(taskId, link) {
-            const btn = document.getElementById(`task-btn-${taskId}`);
-            const originalText = btn.innerText;
-            const timerDuration = 10; // 10 seconds
-
-            // 1. Open the external link
-            window.open(link, '_blank');
-
-            // 2. Start Timer/Loading
-            btn.disabled = true;
-            for (let i = timerDuration; i > 0; i--) {
-                btn.innerHTML = `⏳ ${i}s Left`;
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-
-            // 3. Change to Claim Reward
-            btn.innerHTML = '🎉 Claim Reward';
-            btn.onclick = () => claimTaskReward(taskId);
-            btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-            btn.classList.add('bg-green-600', 'hover:bg-green-700');
-            btn.disabled = false;
-
-            window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-            showPopup("Claim Ready!", "The 10-second timer is up. Click 'Claim Reward' to get your coins!");
-        }
-
-        /**
-         * Finalizes the task and adds the reward to the user's balance.
-         * @param {string} taskId - The ID of the task to claim.
-         */
-        async function claimTaskReward(taskId) {
-            const userId = telegramUser.id.toString();
-            const taskRef = db.collection('tasks').doc(taskId);
-            const userRef = db.collection('users').doc(userId);
-            const btn = document.getElementById(`task-btn-${taskId}`);
-
-            try {
-                // Fetch the task data to get the reward amount
-                const taskDoc = await taskRef.get();
-                if (!taskDoc.exists) {
-                    showPopup("Error", "Task not found!");
-                    return;
-                }
-                const reward = taskDoc.data().reward;
-                const taskTitle = taskDoc.data().title;
-
-                btn.disabled = true;
-                btn.innerHTML = '...Claiming...';
-
-                // Transaction to ensure atomicity
-                await db.runTransaction(async (transaction) => {
-                    const userDoc = await transaction.get(userRef);
-                    if (!userDoc.exists) throw "User does not exist!";
-                    const user = userDoc.data();
-
-                    // Update user balance and stats
-                    transaction.update(userRef, {
-                        balance: user.balance + reward,
-                        totalEarn: user.totalEarn + reward,
-                        tasksDone: user.tasksDone + 1
-                    });
-
-                    // Store reward history for the user
-                    await db.collection('rewards_history').add({
-                        userId: userId,
-                        taskId: taskId,
-                        taskTitle: taskTitle,
-                        reward: reward,
-                        type: 'Task',
-                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                });
-
-                showPopup("Reward Claimed!", `You successfully claimed **${reward} Coins** for: **${taskTitle}**!`);
-                // Disable button permanently after claim (user cannot do the same task twice in this simple model)
-                btn.innerHTML = '✅ Done!';
-                btn.classList.remove('bg-green-600', 'hover:bg-green-700');
-                btn.classList.add('bg-gray-500');
-                btn.onclick = null;
-
-            } catch (e) {
-                console.error("Task claim transaction failed: ", e);
-                showPopup("Error", "Could not claim reward. Please check if you already completed this task or try again.");
-                // Reset button on failure
-                btn.disabled = false;
-                btn.innerHTML = 'Visit';
-                btn.onclick = () => startTaskTimer(taskId, taskDoc.data().link);
-                btn.classList.remove('bg-green-600', 'hover:bg-green-700', 'bg-gray-500');
-                btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
-            }
-        }
-
-        /**
-         * Submits a withdrawal request to Firebase.
-         */
-        async function requestWithdrawal() {
-            const amountInput = document.getElementById('withdraw-amount');
-            const upiIdInput = document.getElementById('upi-id');
-            const amount = parseInt(amountInput.value);
-            const upiId = upiIdInput.value.trim();
-            const btn = document.getElementById('request-withdraw-btn');
-
-            if (!amount || amount < 100) {
-                showPopup("Error", "Please enter a valid amount (Min 100 coins).");
-                return;
-            }
-            if (!upiId) {
-                showPopup("Error", "Please enter your UPI ID.");
-                return;
-            }
-            if (amount > currentUser.balance) {
-                showPopup("Error", `Insufficient balance. You have ${currentUser.balance} coins.`);
-                return;
-            }
-
-            btn.disabled = true;
-            btn.innerHTML = '...Requesting...';
-
-            try {
-                // Transaction to deduct balance and record withdrawal
-                await db.runTransaction(async (transaction) => {
-                    const userRef = db.collection('users').doc(telegramUser.id.toString());
-                    const userDoc = await transaction.get(userRef);
-                    const user = userDoc.data();
-
-                    if (user.balance < amount) {
-                        throw new Error("Balance check failed during transaction.");
-                    }
-
-                    // 1. Deduct balance immediately
-                    transaction.update(userRef, {
-                        balance: user.balance - amount
-                    });
-
-                     // 2. Add withdrawal request
-                    await db.collection('withdrawals').add({
-                        userId: telegramUser.id.toString(),
-                        username: telegramUser.username || 'N/A',
-                        firstName: telegramUser.first_name || 'User',
-                        amount: amount,
-                        upiId: upiId,
-                        status: 'Pending', // Pending | Accepted | Rejected
-                        requestedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                });
-
-                showPopup("Request Sent!", `Withdrawal of **${amount} Coins** to UPI ID **${upiId}** is pending.`);
-                amountInput.value = '';
-                upiIdInput.value = '';
-
-            } catch (e) {
-                console.error("Withdrawal transaction failed: ", e);
-                showPopup("Error", "Failed to submit withdrawal request: " + e.message);
-
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = '💸 Request Withdrawal';
-            }
-        }
-
-        /**
-         * Fetches and displays the user's withdrawal history.
-         * @param {string} userId - The current user's Telegram ID.
-         */
-        function fetchAndDisplayUserWithdrawalHistory(userId) {
-            const list = document.getElementById('withdrawal-history-list');
-            list.innerHTML = '<p class="text-gray-400 text-sm">Loading history...</p>';
-
-            db.collection('withdrawals').where('userId', '==', userId).orderBy('requestedAt', 'desc')
-                .onSnapshot(snapshot => {
-                    if (snapshot.empty) {
-                        list.innerHTML = '<p class="text-gray-400 text-sm">No withdrawal history found.</p>';
-                        return;
-                    }
-
-                    list.innerHTML = '';
-                    snapshot.forEach(doc => {
-                        const item = doc.data();
-                        let statusColor = '';
-                        let statusIcon = '';
-
-                        if (item.status === 'Accepted') {
-                            statusColor = 'bg-green-600';
-                            statusIcon = '✅';
-                        } else if (item.status === 'Rejected') {
-                            statusColor = 'bg-red-600';
-                            statusIcon = '❌';
-                        } else {
-                            statusColor = 'bg-yellow-600';
-                            statusIcon = '⏳';
-                        }
-
-                        const dateStr = item.requestedAt ? new Date(item.requestedAt.toDate()).toLocaleDateString() : 'N/A';
-
-                        const listItem = document.createElement('div');
-                        listItem.className = 'glass-card flex justify-between items-center p-3 text-sm';
-                        listItem.innerHTML = `
-                            <div>
-                                <p class="font-bold">Amount: ${item.amount.toLocaleString()} 💰</p>
-                                <p class="text-xs text-gray-400">UPI: ${item.upiId}</p>
-                            </div>
-                            <div class="${statusColor} text-white px-2 py-1 rounded-full text-xs font-semibold">
-                                ${statusIcon} ${item.status}
-                            </div>
-                        `;
-                        list.appendChild(listItem);
-
-                        // Real-time notification for status change
-                        if (doc.metadata.hasPendingWrites === false && item.status !== 'Pending' && currentUser.lastWithdrawalStatus !== item.status) {
-                            showPopup("Withdrawal Update!", `Your request of ${item.amount} Coins has been **${item.status}**!`);
-                            // Small hack to prevent repeated notifications on every snapshot.
-                            // In a real app, you'd track a "last_notified_status" field in the user doc.
-                            currentUser.lastWithdrawalStatus = item.status;
-                        }
-                    });
-                });
-        }
-
-        /**
-         * Fetches and displays the user's referral history.
-         */
-        function fetchAndDisplayUserReferralHistory() {
-            const list = document.getElementById('referral-history-list');
-            const userId = telegramUser.id.toString();
-            list.innerHTML = '<p class="text-gray-400 text-sm">Loading referrals...</p>';
-
-            db.collection('referrals').where('referrerId', '==', userId).orderBy('timestamp', 'desc')
-                .onSnapshot(snapshot => {
-                    if (snapshot.empty) {
-                        list.innerHTML = '<p class="text-gray-400 text-sm">You haven\'t referred anyone yet.</p>';
-                        return;
-                    }
-
-                    list.innerHTML = '';
-                    snapshot.forEach(doc => {
-                        const item = doc.data();
-                        const listItem = document.createElement('div');
-                        listItem.className = 'glass-card flex justify-between items-center p-3 text-sm';
-                        listItem.innerHTML = `
-                            <div>
-                                <p class="font-bold">Referred: ${item.referredUsername || 'User'}</p>
-                                <p class="text-xs text-gray-400">ID: ${item.referredId}</p>
-                            </div>
-                            <div class="bg-purple-600 text-white px-2 py-1 rounded-full text-xs font-semibold">
-                                +${item.reward.toLocaleString()} 💰
-                            </div>
-                        `;
-                        list.appendChild(listItem);
-                    });
-                });
-        }
-
-        /**
-         * Copies the referral link to the clipboard.
-         */
-        function copyReferralLink() {
-            const linkInput = document.getElementById('referral-link');
-            linkInput.select();
-            document.execCommand('copy');
-            showPopup("Copied!", "Your referral link has been copied to your clipboard.");
-            window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-        }
-
-
-        // === 5. ADMIN PANEL FUNCTIONS ===
-
-        /**
-         * Renders the list of tasks for admin management.
-         * @param {Array<object>} tasks - Array of task objects from Firestore.
-         */
-        function renderAdminTasks(tasks) {
-            const list = document.getElementById('admin-tasks-list');
-            list.innerHTML = '';
-
-            if (tasks.length === 0) {
-                list.innerHTML = '<p class="text-gray-400 mt-4">No tasks in database.</p>';
-                return;
-            }
-
-            tasks.forEach(task => {
-                const taskCard = document.createElement('div');
-                taskCard.id = `admin-task-${task.id}`;
-                taskCard.className = 'glass-card border-l-4 border-indigo-500 p-4';
-                taskCard.innerHTML = `
-                    <h4 class="text-lg font-bold">${task.title}</h4>
-                    <p class="text-sm text-gray-400 mb-2">${task.description}</p>
-                    <p class="text-yellow-400 font-semibold">Reward: ${task.reward.toLocaleString()} 💰 | Link: <a href="${task.link}" target="_blank" class="text-blue-400 hover:text-blue-300">View</a></p>
-                    <div class="mt-3 flex space-x-2">
-                        <button onclick="deleteTask('${task.id}')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-xs transition-all duration-200">
-                            🗑️ Delete
-                        </button>
-                    </div>
-                `;
-                list.appendChild(taskCard);
-            });
-        }
-
-        /**
-         * Adds a new task to Firebase.
-         */
-        async function addNewTask() {
-            const title = document.getElementById('task-title').value.trim();
-            const description = document.getElementById('task-description').value.trim();
-            const reward = parseInt(document.getElementById('task-reward').value);
-            const link = document.getElementById('task-link').value.trim();
-
-            if (!title || !description || !reward || !link || reward <= 0) {
-                showPopup("Error", "Please fill all fields with valid data.");
-                return;
-            }
-
-            try {
-                await db.collection('tasks').add({
-                    title: title,
-                    description: description,
-                    reward: reward,
-                    link: link,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
-
-                showPopup("Success", `Task "**${title}**" published instantly!`);
-                // Clear form
-                document.getElementById('task-title').value = '';
-                document.getElementById('task-description').value = '';
-                document.getElementById('task-reward').value = '';
-                document.getElementById('task-link').value = '';
-
-            } catch (e) {
-                console.error("Error adding task: ", e);
-                showPopup("Error", "Failed to add task.");
-            }
-        }
-
-        /**
-         * Deletes a task from Firebase.
-         * @param {string} taskId - The ID of the task to delete.
-         */
-        async function deleteTask(taskId) {
-            if (!confirm("Are you sure you want to delete this task?")) return;
-
-            try {
-                await db.collection('tasks').doc(taskId).delete();
-                showPopup("Success", "Task deleted instantly!");
-            } catch (e) {
-                console.error("Error deleting task: ", e);
-                showPopup("Error", "Failed to delete task.");
-            }
-        }
-
-        /**
-         * Renders the list of pending withdrawal requests for the admin.
-         * @param {Array<object>} requests - Array of withdrawal request objects.
-         */
-        function renderAdminWithdrawalRequests(requests) {
-            const list = document.getElementById('withdrawal-requests-list');
-            list.innerHTML = '';
-
-            if (requests.length === 0) {
-                list.innerHTML = '<p class="text-gray-400 mt-4">No pending withdrawal requests.</p>';
-                return;
-            }
-
-            requests.forEach(req => {
-                const requestCard = document.createElement('div');
-                requestCard.className = 'glass-card border-l-4 border-yellow-500 p-4';
-                requestCard.innerHTML = `
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="font-bold text-lg">${req.amount.toLocaleString()} 💰 - ${req.firstName}</p>
-                            <p class="text-sm text-gray-400">@${req.username || 'N/A'} (ID: ${req.userId})</p>
-                            <p class="text-sm font-mono text-yellow-300 mt-1">UPI: ${req.upiId}</p>
-                        </div>
-                        <div class="flex space-x-2">
-                            <button onclick="updateWithdrawalStatus('${req.id}', 'Accepted', ${req.amount}, '${req.userId}')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-3 rounded-lg text-sm transition-all duration-200">
-                                ✅ Accept
-                            </button>
-                            <button onclick="updateWithdrawalStatus('${req.id}', 'Rejected', ${req.amount}, '${req.userId}')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-lg text-sm transition-all duration-200">
-                                ❌ Reject
-                            </button>
-                        </div>
-                    </div>
-                `;
-                list.appendChild(requestCard);
-            });
-        }
-
-        /**
-         * Updates the status of a withdrawal request.
-         * @param {string} requestId - ID of the withdrawal document.
-         * @param {string} status - New status ('Accepted' or 'Rejected').
-         * @param {number} amount - The withdrawal amount.
-         * @param {string} userId - The user's ID.
-         */
-        async function updateWithdrawalStatus(requestId, status, amount, userId) {
-            try {
-                const requestRef = db.collection('withdrawals').doc(requestId);
-                const userRef = db.collection('users').doc(userId);
-
-                await db.runTransaction(async (transaction) => {
-                    // 1. Update the withdrawal request status
-                    transaction.update(requestRef, {
-                        status: status,
-                        processedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                        processedBy: telegramUser.id.toString()
-                    });
-
-                    // 2. Handle rejection (return coins to user)
-                    if (status === 'Rejected') {
-                        const userDoc = await transaction.get(userRef);
-                        const user = userDoc.data();
-                        transaction.update(userRef, {
-                            balance: user.balance + amount
-                        });
-                    }
-
-                    // 3. Handle acceptance (update total withdrawal stats)
-                    if (status === 'Accepted') {
-                         const userDoc = await transaction.get(userRef);
-                        const user = userDoc.data();
-                        transaction.update(userRef, {
-                            totalWithdrawal: user.totalWithdrawal + amount
-                        });
-                    }
-                });
-
-                showPopup("Status Updated", `Withdrawal request **${requestId.substring(0, 4)}...** set to **${status}**.`);
-
-            } catch (e) {
-                console.error(`Error updating withdrawal status to ${status}: `, e);
-                showPopup("Error", `Failed to set withdrawal status to ${status}.`);
-            }
-        }
-
-        /**
-         * Manually adjusts a user's coin balance.
-         */
-        async function adjustUserBalance() {
-            const userId = document.getElementById('manual-user-id').value.trim();
-            const amount = parseInt(document.getElementById('manual-amount').value);
-
-            if (!userId || !amount) {
-                showPopup("Error", "Please enter a User ID and an amount.");
-                return;
-            }
-
-            try {
-                const userRef = db.collection('users').doc(userId);
-                await db.runTransaction(async (transaction) => {
-                    const userDoc = await transaction.get(userRef);
-                    if (!userDoc.exists) throw new Error("User not found!");
-
-                    const user = userDoc.data();
-                    const newBalance = user.balance + amount;
-
-                    transaction.update(userRef, {
-                        balance: newBalance,
-                        totalEarn: user.totalEarn + (amount > 0 ? amount : 0) // Only count positive adjustments in totalEarn
-                    });
-                });
-
-                showPopup("Success", `Balance for User ID **${userId}** adjusted by **${amount} Coins**.`);
-                document.getElementById('manual-user-id').value = '';
-                document.getElementById('manual-amount').value = '';
-            } catch (e) {
-                console.error("Balance adjustment failed: ", e);
-                showPopup("Error", "Failed to adjust balance: " + e.message);
-            }
-        }
-
-        /**
-         * Placeholder for sending a broadcast message (requires external bot API).
-         */
-        function sendBroadcast() {
-            const message = document.getElementById('broadcast-message').value.trim();
-            if (!message) {
-                showPopup("Note", "Broadcast message is empty.");
-                return;
-            }
-            // In a real application, this function would call an external API endpoint
-            // (on your server) which uses the Telegram Bot API to send a message to all users.
-            showPopup("Broadcast Placeholder", `Broadcast message: "**${message.substring(0, 30)}...**" has been logged. Actual sending requires a backend server.`);
-            document.getElementById('broadcast-message').value = '';
-        }
-
-        // === 6. APPLICATION STARTUP ===
-        window.onload = initializeApp;
-
-    </script>
+      });
+    });
+
+  /***** ====== USER STATS (realtime) ====== *****/
+  userRef.onSnapshot(snap=>{
+    if (!snap.exists) return;
+    const d = snap.data();
+    totalCoinsEl.textContent = formatRupee(d.coins || 0);
+    totalRefEl.textContent = String(d.reffer || 0);
+    totalWithdrawnEl.textContent = formatRupee(d.totalWithdrawals || 0);
+    tasksCompletedEl.textContent = String(d.tasksCompleted || 0);
+  });
+
+  /***** ====== QUICK TASKS (top 3) ====== *****/
+  function renderTaskCard(doc, container, isQuick=false){
+    const d = doc.data();
+    const id = doc.id;
+    const el = document.createElement("div");
+    el.className = "task";
+    el.innerHTML = `
+      <div class="meta">
+        <h4>${escapeHtml(d.name || "Task")}</h4>
+        <p>${escapeHtml(d.type || "Task type")} • ${formatRupee(d.reward || 0)}</p>
+      </div>
+      <div class="controls">
+        <button class="btn btn-ghost small" data-link="${escapeAttr(d.link||'')}" onclick="openTask(event,'${id}')">Open</button>
+        <button class="btn btn-primary small" onclick="claimTask('${id}', ${Number(d.reward||0)})">Claim</button>
+      </div>`;
+    container.appendChild(el);
+  }
+
+  // load top 3 quick tasks
+  db.collection("tasks").orderBy("createdAt","desc").limit(3).onSnapshot(snap=>{
+    quickTasksEl.innerHTML = "";
+    if (snap.empty) {
+      quickTasksEl.innerHTML = '<div class="muted">No tasks available.</div>';
+      return;
+    }
+    snap.forEach(doc=>renderTaskCard(doc, quickTasksEl, true));
+  });
+
+  /***** ====== ALL TASKS (tasks tab) ====== *****/
+  let tasksCache = [];
+  db.collection("tasks").orderBy("createdAt","desc").onSnapshot(snap=>{
+    tasksCache = [];
+    allTasksEl.innerHTML = "";
+    if (snap.empty) {
+      allTasksEl.innerHTML = '<div class="muted">No tasks yet.</div>';
+      return;
+    }
+    snap.forEach(doc=>{
+      tasksCache.push({ id: doc.id, data: doc.data() });
+      renderTaskCard(doc, allTasksEl, false);
+    });
+  });
+
+  searchTask?.addEventListener("input", ()=>{
+    const q = (searchTask.value || "").toLowerCase();
+    allTasksEl.innerHTML = "";
+    const filtered = tasksCache.filter(t => (t.data.name||'').toLowerCase().includes(q) || (t.data.type||'').toLowerCase().includes(q));
+    if (!filtered.length) { allTasksEl.innerHTML = '<div class="muted">No tasks match.</div>'; return; }
+    filtered.forEach(t => {
+      const fakeDoc = { id: t.id, data: t.data };
+      renderTaskCard(fakeDoc, allTasksEl, false);
+    });
+  });
+
+  /***** ====== OPEN TASK ====== *****/
+  function openTask(ev, taskId){
+    const link = ev.currentTarget?.getAttribute('data-link') || '';
+    if (link) window.open(link, "_blank");
+  }
+  window.openTask = openTask; // expose for inline onclick usage
+
+  /***** ====== CLAIM TASK (transaction + user_claims) ====== *****/
+  async function claimTask(taskId, reward){
+    try{
+      const claimId = `${uid}_${taskId}`;
+      const claimRef = db.collection("user_claims").doc(claimId);
+      const taskRef = db.collection("tasks").doc(taskId);
+      const uRef = userRef;
+
+      await db.runTransaction(async (t)=>{
+        const claimSnap = await t.get(claimRef);
+        if (claimSnap.exists) throw new Error("Already claimed");
+
+        // optional: check user has not already claimed via other means
+        // mark claim and increment counters
+        t.set(claimRef, { userId: uid, taskId: taskId, claimedAt: firebase.firestore.FieldValue.serverTimestamp() });
+
+        // increment user's coins and tasksCompleted
+        t.update(uRef, {
+          coins: firebase.firestore.FieldValue.increment(Number(reward||0)),
+          tasksCompleted: firebase.firestore.FieldValue.increment(1)
+        });
+      });
+
+      showToast(`Reward added: ₹${reward}`);
+    }catch(err){
+      console.error("claimTask err", err);
+      if (String(err).toLowerCase().includes("already claimed")) showToast("Task already claimed");
+      else showToast("Claim failed");
+    }
+  }
+  window.claimTask = claimTask; // expose for inline onclick usage
+
+  /***** ====== WITHDRAWALS (request + recent list) ====== *****/
+  withdrawBtn.addEventListener("click", async ()=>{
+    const upi = (upiInput.value || "").trim();
+    const amount = Number(amountInput.value || 0);
+    if (!upi || amount <= 0) return showToast("Enter valid UPI and amount");
+    try{
+      await db.collection("withdrawals").add({
+        userId: uid,
+        upi,
+        amount,
+        status: "pending",
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      showToast("Withdrawal requested");
+      upiInput.value = ""; amountInput.value = "";
+    }catch(e){
+      console.error("withdraw err", e);
+      showToast("Request failed");
+    }
+  });
+
+  // recent withdrawals (for current user)
+  db.collection("withdrawals").where("userId","==",uid).orderBy("createdAt","desc").limit(3)
+    .onSnapshot(snap=>{
+      if (snap.empty){ recentWithdrawalsEl.innerHTML = '<div class="muted">No requests yet.</div>'; return; }
+      const arr = [];
+      snap.forEach(d=>{
+        const dd = d.data();
+        arr.push(`<div style="margin-bottom:6px">${formatRupee(dd.amount)} — ${dd.status} <div class="muted" style="font-size:12px">${dd.upi}</div></div>`);
+      });
+      recentWithdrawalsEl.innerHTML = arr.join("");
+    });
+
+  /***** ====== TASKS TAB SWITCHING ====== *****/
+  tabDashboard.addEventListener("click", ()=>{
+    tabDashboard.classList.add("active");
+    tabTasks.classList.remove("active");
+    dashboardView.style.display = "";
+    tasksView.style.display = "none";
+  });
+  tabTasks.addEventListener("click", ()=>{
+    tabTasks.classList.add("active");
+    tabDashboard.classList.remove("active");
+    dashboardView.style.display = "none";
+    tasksView.style.display = "";
+  });
+
+  /***** ====== RECENT ANNOUNCEMENTS LOGIC DONE ABOVE ====== *****/
+
+  /***** ====== ESCAPE UTIL (small) ====== *****/
+  function escapeHtml(s){ if(!s) return ""; return String(s).replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+  function escapeAttr(s){ return (s||"").replace(/"/g,'&quot;'); }
+
+  /***** ====== INIT FLOW ====== *****/
+  (async function init(){
+    renderBasic();
+    await createUserIfNotExists();
+
+    // Render any immediate UI states already bound to listeners (listeners set above)
+    // Also fetch tasks once to update tasksCache if needed (already done by onSnapshot)
+
+    // Optionally: show welcome toast
+    setTimeout(()=> showToast(`Welcome ${user.name}!`), 600);
+  })();
+  </script>
 </body>
 </html>
